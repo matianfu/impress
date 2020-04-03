@@ -140,7 +140,7 @@ proto.handle = function handle (req, res, out) {
   debug('dispatching %s %s', req.method, req.url)
 
   var idx = 0
-  var protohost = getProtohost(req.url) || ''
+
   var removed = ''
   var slashAdded = false
   var paramcalled = {}
@@ -175,6 +175,9 @@ proto.handle = function handle (req, res, out) {
   next()
 
   function next (err) {
+
+    console.log('next', err)
+
     var layerError = err === 'route'
       ? null
       : err
@@ -188,7 +191,7 @@ proto.handle = function handle (req, res, out) {
     // restore altered req.url
     if (removed.length !== 0) {
       req.baseUrl = parentUrl
-      req.url = protohost + removed + req.url.substr(protohost.length)
+      req.url = removed + req.url
       removed = ''
     }
 
@@ -296,10 +299,10 @@ proto.handle = function handle (req, res, out) {
       // middleware (.use stuff) needs to have the path stripped
       debug('trim prefix (%s) from url %s', layerPath, req.url)
       removed = layerPath
-      req.url = protohost + req.url.substr(protohost.length + removed.length)
+      req.url = req.url.substr(removed.length)
 
       // Ensure leading slash
-      if (!protohost && req.url[0] !== '/') {
+      if (req.url[0] !== '/') {
         req.url = '/' + req.url
         slashAdded = true
       }
@@ -532,7 +535,10 @@ function getPathname (req) {
   }
 }
 
+/** TODO url[0] always '/' ?? */
+
 // Get get protocol + host for a URL
+/**
 function getProtohost (url) {
   if (typeof url !== 'string' || url.length === 0 || url[0] === '/') {
     return undefined
@@ -548,6 +554,7 @@ function getProtohost (url) {
     ? url.substr(0, url.indexOf('/', 3 + fqdnIndex))
     : undefined
 }
+*/
 
 // get type for error message
 function gettype (obj) {

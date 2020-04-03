@@ -88,10 +88,6 @@ class Impress extends EventEmitter {
     this.lazyrouter()
     var router = this._router
 
-    console.log('======')
-    console.log(router)
-    console.log('======')
-
     fns.forEach(function (fn) {
       if (!fn || !fn.handle || !fn.set) {
         return router.use(path, fn)
@@ -116,4 +112,7 @@ class Impress extends EventEmitter {
   }
 }
 
-module.exports = Impress
+const impress = (conn) => new Impress(conn)
+impress.Router = Router 
+
+module.exports = impress

@@ -1,17 +1,24 @@
-const Impress = require('./src/index') 
+const impress = require('./src/index') 
 
-const app = new Impress() 
+const app = impress() 
 
 app.use('/', function(req, res, next) {
+  console.log('pig pig')
+  next()
 })
 
-app.use('/hello', function (req, res, next) {
+const router = impress.Router()
+router.get('/bar', function (req, res, next) {
+  console.log('bling bling')
 })
+
+app.use('/foo', router)
 
 const req = {
-  method: 'get',
-  url: '/hello'
+  method: 'GET',
+  url: '/foo/bar'
 }
+
 const res = {}
 
 app.handle(req, res, () => {})
