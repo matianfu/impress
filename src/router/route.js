@@ -6,26 +6,24 @@
  * MIT Licensed
  */
 
-'use strict'
-
 /**
  * Module dependencies.
  * @private
  */
 
-var debug = require('debug')('express:router:route')
-var { flatten } = require('array-flatten')
-var Layer = require('./layer')
+const debug = require('debug')('express:router:route')
+const { flatten } = require('array-flatten')
+const Layer = require('./layer')
 
-var methods = require('./methods')
+const methods = require('./methods')
 
 /**
  * Module variables.
  * @private
  */
 
-var slice = Array.prototype.slice
-var toString = Object.prototype.toString
+const slice = Array.prototype.slice
+const toString = Object.prototype.toString
 
 /**
  * Module exports.
@@ -61,7 +59,7 @@ Route.prototype._handles_method = function _handles_method (method) {
     return true
   }
 
-  var name = method.toLowerCase()
+  let name = method.toLowerCase()
 
   if (name === 'head' && !this.methods.head) {
     name = 'get'
@@ -76,14 +74,14 @@ Route.prototype._handles_method = function _handles_method (method) {
  */
 
 Route.prototype._options = function _options () {
-  var methods = Object.keys(this.methods)
+  const methods = Object.keys(this.methods)
 
   // append automatic head
   if (this.methods.get && !this.methods.head) {
     methods.push('head')
   }
 
-  for (var i = 0; i < methods.length; i++) {
+  for (let i = 0; i < methods.length; i++) {
     // make upper case
     methods[i] = methods[i].toUpperCase()
   }
@@ -97,13 +95,13 @@ Route.prototype._options = function _options () {
  */
 
 Route.prototype.dispatch = function dispatch (req, res, done) {
-  var idx = 0
-  var stack = this.stack
+  let idx = 0
+  const stack = this.stack
   if (stack.length === 0) {
     return done()
   }
 
-  var method = req.method.toLowerCase()
+  let method = req.method.toLowerCase()
   if (method === 'head' && !this.methods.head) {
     method = 'get'
   }
@@ -123,7 +121,7 @@ Route.prototype.dispatch = function dispatch (req, res, done) {
       return done(err)
     }
 
-    var layer = stack[idx++]
+    const layer = stack[idx++]
     if (!layer) {
       return done(err)
     }
@@ -169,18 +167,18 @@ Route.prototype.dispatch = function dispatch (req, res, done) {
  */
 
 Route.prototype.all = function all () {
-  var handles = flatten(slice.call(arguments))
+  const handles = flatten(slice.call(arguments))
 
-  for (var i = 0; i < handles.length; i++) {
-    var handle = handles[i]
+  for (let i = 0; i < handles.length; i++) {
+    const handle = handles[i]
 
     if (typeof handle !== 'function') {
-      var type = toString.call(handle)
-      var msg = 'Route.all() requires a callback function but got a ' + type
+      const type = toString.call(handle)
+      const msg = 'Route.all() requires a callback function but got a ' + type
       throw new TypeError(msg)
     }
 
-    var layer = Layer('/', {}, handle)
+    const layer = new Layer('/', {}, handle)
     layer.method = undefined
 
     this.methods._all = true
@@ -192,20 +190,20 @@ Route.prototype.all = function all () {
 
 methods.forEach(function (method) {
   Route.prototype[method] = function () {
-    var handles = flatten(slice.call(arguments))
+    const handles = flatten(slice.call(arguments))
 
-    for (var i = 0; i < handles.length; i++) {
-      var handle = handles[i]
+    for (let i = 0; i < handles.length; i++) {
+      const handle = handles[i]
 
       if (typeof handle !== 'function') {
-        var type = toString.call(handle)
-        var msg = 'Route.' + method + '() requires a callback function but got a ' + type
+        const type = toString.call(handle)
+        const msg = 'Route.' + method + '() requires a callback function but got a ' + type
         throw new Error(msg)
       }
 
       debug('%s %o', method, this.path)
 
-      var layer = Layer('/', {}, handle)
+      const layer = new Layer('/', {}, handle)
       layer.method = method
 
       this.methods[method] = true
