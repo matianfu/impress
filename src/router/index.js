@@ -136,31 +136,6 @@ function restore (fn, obj) {
   }
 }
 
-// send an OPTIONS response
-function sendOptionsResponse (res, options, next) {
-  try {
-    const body = options.join(',')
-    res.set('Allow', body)
-    res.send(body)
-  } catch (err) {
-    next(err)
-  }
-}
-
-// wrap a function
-function wrap (old, fn) {
-  return function proxy () {
-    const args = new Array(arguments.length + 1)
-
-    args[0] = old
-    for (let i = 0, len = arguments.length; i < len; i++) {
-      args[i + 1] = arguments[i]
-    }
-
-    fn.apply(this, args)
-  }
-}
-
 /**
  * A Router is a callable
  * 
@@ -168,6 +143,11 @@ function wrap (old, fn) {
  */
 class Router extends Function {
 
+  /**
+   * Constructs a Router instance
+   *
+   * @param {object} opts - options
+   */
   constructor (opts = {}) {
     super()
 
@@ -219,9 +199,17 @@ class Router extends Function {
   param (name, fn) {
     // param logic
     if (typeof name === 'function') {
-      deprecate('router.param(fn): Refactor to use path params')
-      this._params.push(name)
-      return
+      throw new Error('function without name not supported')
+    }
+
+    if (name[0] === ':') {
+      throw new Error('name started with colon not supported')
+    }
+
+    // ensure we end up with a
+    // middleware function
+    if (typeof fn !== 'function') {
+      throw new Error('invalid param() call for ' + name + ', got ' + fn)
     }
 
     // apply param functions
@@ -229,21 +217,10 @@ class Router extends Function {
     const len = params.length
     let ret
 
-    if (name[0] === ':') {
-      deprecate('router.param(' + JSON.stringify(name) + ', fn): Use router.param(' + JSON.stringify(name.substr(1)) + ', fn) instead')
-      name = name.substr(1)
-    }
-
     for (let i = 0; i < len; ++i) {
       if (ret = params[i](name, fn)) {
         fn = ret
       }
-    }
-
-    // ensure we end up with a
-    // middleware function
-    if (typeof fn !== 'function') {
-      throw new Error('invalid param() call for ' + name + ', got ' + fn)
     }
 
     (this.params[name] = this.params[name] || []).push(fn)
@@ -255,51 +232,8 @@ class Router extends Function {
    * @private
    */
   handle (req, res, out) {
-    const self = this
-
-    debug('dispatching %s %s', req.method, req.url)
-
-    let idx = 0
-
-    let removed = ''
-    let slashAdded = false
-    const paramcalled = {}
-
-    // store options for OPTIONS request
-    // only used if OPTIONS request
-    const options = []
-
-    // middleware and routes
-    const stack = self.stack
-
-    // manage inter-router variables
-    const parentParams = req.params
-    const parentUrl = req.baseUrl || ''
-    let done = restore(out, req, 'baseUrl', 'next', 'params')
-
-    // setup next layer
-    req.next = next
-
-    // for options requests, respond with a default if nothing else responds
-    if (req.method === 'OPTIONS') {
-      done = wrap(done, function (old, err) {
-        if (err || options.length === 0) return old(err)
-        sendOptionsResponse(res, options, old)
-      })
-    }
-
-    // setup basic req values
-    req.baseUrl = parentUrl
-    req.originalUrl = req.originalUrl || req.url
-
-    next()
-
-    function next (err) {
-      console.log('next', err)
-
-      let layerError = err === 'route'
-        ? null
-        : err
+    const next = (err) => {
+      let layerError = err === 'route' ? null : err
 
       // remove added slash
       if (slashAdded) {
@@ -321,7 +255,7 @@ class Router extends Function {
       }
 
       // no more matching layers
-      if (idx >= stack.length) {
+      if (idx >= this.stack.length) {
         setImmediate(done, layerError)
         return
       }
@@ -338,8 +272,8 @@ class Router extends Function {
       let match
       let route
 
-      while (match !== true && idx < stack.length) {
-        layer = stack[idx++]
+      while (match !== true && idx < this.stack.length) {
+        layer = this.stack[idx++]
         match = matchLayer(layer, path)
         route = layer.route
 
@@ -389,13 +323,14 @@ class Router extends Function {
       }
 
       // Capture one-time layer values
-      req.params = self.mergeParams
+      req.params = this.mergeParams
         ? mergeParams(layer.params, parentParams)
         : layer.params
+
       const layerPath = layer.path
 
       // this should be done for the layer
-      self.process_params(layer, paramcalled, req, res, function (err) {
+      this.process_params(layer, paramcalled, req, res, err => {
         if (err) {
           return next(layerError || err)
         }
@@ -408,7 +343,7 @@ class Router extends Function {
       })
     }
 
-    function trim_prefix (layer, layerError, layerPath, path) {
+    const trim_prefix = (layer, layerError, layerPath, path) => {
       if (layerPath.length !== 0) {
         // Validate path breaks on a path separator
         const c = path[layerPath.length]
@@ -440,6 +375,27 @@ class Router extends Function {
         layer.handle_request(req, res, next)
       }
     }
+
+    debug('dispatching %s %s', req.method, req.url)
+
+    let idx = 0
+    let removed = ''
+    let slashAdded = false
+    const paramcalled = {}
+
+    // manage inter-router variables
+    const parentParams = req.params
+    const parentUrl = req.baseUrl || ''
+    let done = restore(out, req, 'baseUrl', 'next', 'params')
+
+    // setup next layer
+    req.next = next
+
+    // setup basic req values
+    req.baseUrl = parentUrl
+    req.originalUrl = req.originalUrl || req.url
+
+    next()
   }
 
   /**

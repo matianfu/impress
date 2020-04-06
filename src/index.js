@@ -33,7 +33,7 @@ class Impress extends EventEmitter {
 
   lazyrouter () {
     if (!this._router) {
-      this._router = new Router({
+      this._router = Router({
         caseSensitive: true, // this.enabled('case sensitive routing'),
         strict: true // this.enabled('strict routing')
       })

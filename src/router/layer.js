@@ -98,11 +98,9 @@ class Layer {
    * @api private
    */
   match (path) {
-
-    console.log('layer match', path)
-
     let match
 
+    // TODO !== ???
     if (path != null) {
       // fast path non-ending match for / (any path matches)
       if (this.regexp.fast_slash) {
@@ -132,16 +130,13 @@ class Layer {
     this.params = {}
     this.path = match[0]
 
-    const keys = this.keys
-    const params = this.params
-
     for (let i = 1; i < match.length; i++) {
-      const key = keys[i - 1]
+      const key = this.keys[i - 1]
       const prop = key.name
       const val = match[i]
 
-      if (val !== undefined || !(Object.prototype.hasOwnProperty.call(params, prop))) {
-        params[prop] = val
+      if (val !== undefined || !(Object.prototype.hasOwnProperty.call(this.params, prop))) {
+        this.params[prop] = val
       }
     }
 
