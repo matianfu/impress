@@ -72,7 +72,6 @@ Route.prototype._handles_method = function _handles_method (method) {
  * @return {Array} supported HTTP methods
  * @private
  */
-
 Route.prototype._options = function _options () {
   const methods = Object.keys(this.methods)
 
@@ -93,7 +92,6 @@ Route.prototype._options = function _options () {
  * dispatch req, res into this route
  * @private
  */
-
 Route.prototype.dispatch = function dispatch (req, res, done) {
   let idx = 0
   const stack = this.stack

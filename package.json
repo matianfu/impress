@@ -11,7 +11,7 @@
     "url": "git+https://github.com/matianfu/impress.git"
   },
   "author": "matianfu@gmail.com",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/matianfu/impress/issues"
   },
