@@ -30,184 +30,263 @@ const toString = Object.prototype.toString
  * @public
  */
 
-module.exports = Route
-
 /**
  * Initialize `Route` with the given `path`,
  *
  * @param {String} path
  * @public
  */
+class Route {
+  constructor (path) {
+    this.path = path
+    this.stack = []
 
-function Route (path) {
-  this.path = path
-  this.stack = []
+    debug('new %o', path)
 
-  debug('new %o', path)
-
-  // route handlers for various http methods
-  this.methods = {}
-}
-
-/**
- * Determine if the route handles a given method.
- * @private
- */
-
-Route.prototype._handles_method = function _handles_method (method) {
-  if (this.methods._all) {
-    return true
+    this.methods = {}
   }
 
-  let name = method.toLowerCase()
+  /**
+   * Determine if the route handles a given method.
+   * @private
+   */
+  _handles_method (method) {
+    if (this.methods._all) {
+      return true
+    }
 
-  if (name === 'head' && !this.methods.head) {
-    name = 'get'
+    let name = method.toLowerCase()
+
+    if (name === 'head' && !this.methods.head) {
+      name = 'get'
+    }
+
+    return Boolean(this.methods[name])
   }
 
-  return Boolean(this.methods[name])
-}
+  /**
+   * @return {Array} supported HTTP methods
+   * @private
+   */
+  _options () {
+    const methods = Object.keys(this.methods)
 
-/**
- * @return {Array} supported HTTP methods
- * @private
- */
-Route.prototype._options = function _options () {
-  const methods = Object.keys(this.methods)
+    // append automatic head
+    if (this.methods.get && !this.methods.head) {
+      methods.push('head')
+    }
 
-  // append automatic head
-  if (this.methods.get && !this.methods.head) {
-    methods.push('head')
+    for (let i = 0; i < methods.length; i++) {
+      // make upper case
+      methods[i] = methods[i].toUpperCase()
+    }
+
+    return methods
   }
 
-  for (let i = 0; i < methods.length; i++) {
-    // make upper case
-    methods[i] = methods[i].toUpperCase()
-  }
-
-  return methods
-}
-
-/**
- * dispatch req, res into this route
- * @private
- */
-Route.prototype.dispatch = function dispatch (req, res, done) {
-  let idx = 0
-  const stack = this.stack
-  if (stack.length === 0) {
-    return done()
-  }
-
-  let method = req.method.toLowerCase()
-  if (method === 'head' && !this.methods.head) {
-    method = 'get'
-  }
-
-  req.route = this
-
-  next()
-
-  function next (err) {
-    // signal to exit route
-    if (err && err === 'route') {
+  /**
+   * dispatch req, res into this route
+   * @private
+   */
+  dispatch (req, res, done) {
+    let idx = 0
+    const stack = this.stack
+    if (stack.length === 0) {
       return done()
     }
 
-    // signal to exit router
-    if (err && err === 'router') {
-      return done(err)
+    let method = req.method.toLowerCase()
+
+    req.route = this
+
+    const next = err => {
+      // signal to exit route
+      if (err && err === 'route') {
+        return done()
+      }
+
+      // signal to exit router
+      if (err && err === 'router') {
+        return done(err)
+      }
+
+      const layer = stack[idx++]
+      if (!layer) {
+        return done(err)
+      }
+
+      if (layer.method && layer.method !== method) {
+        return next(err)
+      }
+
+      if (err) {
+        layer.handle_error(err, req, res, next)
+      } else {
+        layer.handle_request(req, res, next)
+      }
     }
 
-    const layer = stack[idx++]
-    if (!layer) {
-      return done(err)
-    }
-
-    if (layer.method && layer.method !== method) {
-      return next(err)
-    }
-
-    if (err) {
-      layer.handle_error(err, req, res, next)
-    } else {
-      layer.handle_request(req, res, next)
-    }
-  }
-}
-
-/**
- * Add a handler for all HTTP verbs to this route.
- *
- * Behaves just like middleware and can respond or call `next`
- * to continue processing.
- *
- * You can use multiple `.all` call to add multiple handlers.
- *
- *   function check_something(req, res, next){
- *     next();
- *   };
- *
- *   function validate_user(req, res, next){
- *     next();
- *   };
- *
- *   route
- *   .all(validate_user)
- *   .all(check_something)
- *   .get(function(req, res, next){
- *     res.send('hello world');
- *   });
- *
- * @param {function} handler
- * @return {Route} for chaining
- * @api public
- */
-
-Route.prototype.all = function all () {
-  const handles = flatten(slice.call(arguments))
-
-  for (let i = 0; i < handles.length; i++) {
-    const handle = handles[i]
-
-    if (typeof handle !== 'function') {
-      const type = toString.call(handle)
-      const msg = 'Route.all() requires a callback function but got a ' + type
-      throw new TypeError(msg)
-    }
-
-    const layer = new Layer('/', {}, handle)
-    layer.method = undefined
-
-    this.methods._all = true
-    this.stack.push(layer)
+    next()
   }
 
-  return this
-}
-
-methods.forEach(function (method) {
-  Route.prototype[method] = function () {
-    const handles = flatten(slice.call(arguments))
+  get (...fns) {
+    const handles = flatten(fns)
 
     for (let i = 0; i < handles.length; i++) {
       const handle = handles[i]
 
       if (typeof handle !== 'function') {
-        const type = toString.call(handle)
-        const msg = 'Route.' + method + '() requires a callback function but got a ' + type
-        throw new Error(msg)
+        throw new TypeError('Route.get() requires a callback function')
       }
 
-      debug('%s %o', method, this.path)
+      debug('%s %o', 'get', this.path)
+
+      this.methods.get = true
+      this.stack.push(Object.assign(new Layer('/', {}, handle), { method: 'get' }))
+    }
+
+    return this
+  }
+
+  post (...fns) {
+    const handles = flatten(fns)
+
+    for (let i = 0; i < handles.length; i++) {
+      const handle = handles[i]
+
+      if (typeof handle !== 'function') {
+        throw new TypeError('Route.post() requires a callback function')
+      }
+
+      debug('%s %o', 'post', this.path)
+
+      this.methods.post = true
+      this.stack.push(Object.assign(new Layer('/', {}, handle), { method: 'post' }))
+    }
+
+    return this
+  }
+
+  put (...fns) {
+    const handles = flatten(fns)
+
+    for (let i = 0; i < handles.length; i++) {
+      const handle = handles[i]
+
+      if (typeof handle !== 'function') {
+        throw new TypeError('Route.put() requires a callback function')
+      }
+
+      debug('%s %o', 'put', this.path)
+
+      this.methods.put = true
+      this.stack.push(Object.assign(new Layer('/', {}, handle), { method: 'put' }))
+    }
+
+    return this
+  }
+
+  patch (...fns) {
+    const handles = flatten(fns)
+
+    for (let i = 0; i < handles.length; i++) {
+      const handle = handles[i]
+
+      if (typeof handle !== 'function') {
+        throw new TypeError('Route.patch() requires a callback function')
+      }
+
+      debug('%s %o', 'patch', this.path)
+
+      this.methods.patch = true
+      this.stack.push(Object.assign(new Layer('/', {}, handle), { method: 'patch' }))
+    }
+
+    return this
+  }
+
+  delete (...fns) {
+    const handles = flatten(fns)
+
+    for (let i = 0; i < handles.length; i++) {
+      const handle = handles[i]
+
+      if (typeof handle !== 'function') {
+        throw new TypeError('Route.delete() requires a callback function')
+      }
+
+      debug('%s %o', 'delete', this.path)
+
+      this.methods.delete = true
+      this.stack.push(Object.assign(new Layer('/', {}, handle), { method: 'delete' }))
+    }
+
+    return this
+  }
+
+  nop (...fns) {
+    const handlers = flatten(fns)
+
+    for (let i = 0; i < handlers.length; i++) {
+      const handle = handlers[i]
+
+      if (typeof handle !== 'function') {
+        throw new TypeError('Route.ok() requires a callback function')
+      } 
+
+      debug('%s %o', 'nop', this.path)
+
+      this.methods.nop = true
+      this.stack.push(Object.assign(new Layer('/', {}, handle), { method: 'nop' }))
+    }
+  }
+
+  /**
+   * Add a handler for all HTTP verbs to this route.
+   *
+   * Behaves just like middleware and can respond or call `next`
+   * to continue processing.
+   *
+   * You can use multiple `.all` call to add multiple handlers.
+   *
+   *   function check_something(req, res, next){
+   *     next();
+   *   };
+   *
+   *   function validate_user(req, res, next){
+   *     next();
+   *   };
+   *
+   *   route
+   *   .all(validate_user)
+   *   .all(check_something)
+   *   .get(function(req, res, next){
+   *     res.send('hello world');
+   *   });
+   *
+   * @param {function} handler
+   * @return {Route} for chaining
+   * @api public
+   */
+  all (...fns) {
+    const handles = flatten(fns)
+
+    for (let i = 0; i < handles.length; i++) {
+      const handle = handles[i]
+
+      if (typeof handle !== 'function') {
+        throw new TypeError('Route.all() requires a callback function')
+      }
 
       const layer = new Layer('/', {}, handle)
-      layer.method = method
+      layer.method = undefined
 
-      this.methods[method] = true
+      this.methods._all = true
       this.stack.push(layer)
     }
 
     return this
   }
-})
+}
+
+module.exports = Route

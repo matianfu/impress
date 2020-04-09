@@ -17,9 +17,7 @@ const methods = require('./methods')
 
 const mixin = require('utils-merge')
 const debug = require('debug')('express:router')
-const deprecate = require('depd')('express')
 const { flatten } = require('array-flatten')
-const parseUrl = require('parseurl')
 
 /**
  * Module variables.
@@ -36,15 +34,6 @@ function appendMethods (list, addition) {
     if (list.indexOf(method) === -1) {
       list.push(method)
     }
-  }
-}
-
-// get pathname of request
-function getPathname (req) {
-  try {
-    return parseUrl(req).pathname
-  } catch (err) {
-    return undefined
   }
 }
 
@@ -261,7 +250,8 @@ class Router extends Function {
       }
 
       // get pathname of request
-      const path = getPathname(req)
+      // const path = getPathname(req)
+      const path = req.url
 
       if (path == null) {
         return done(layerError)
@@ -578,14 +568,45 @@ class Router extends Function {
     this.stack.push(layer)
     return route
   }
+
+/**
+
+  get (path, ...fns) {
+    this.route(path).get(...fns)
+    return this
+  }
+
+  post (path, ...fns) {
+    this.route(path).post(...fns)
+    return this
+  }
+
+  put (path, ...fns) {
+    this.route(path).put(...fns)
+    return this
+  }
+
+  patch (path, ...fns) {
+    this.route(path).patch(...fns)
+    return this
+  }
+
+  delete (path, ...fns) {
+    this.route(path).delete(...fns)
+    return this
+  }
+
+  nop (path, ...fns) {
+    this.route(path).nop(...fns)
+    return this
+  }
+
+*/
 }
 
-// create Router#VERB functions
-methods.concat('all').forEach(function (method) {
-  Router.prototype[method] = function (path) {
-    const route = this.route(path)
-    route[method].apply(route, slice.call(arguments, 1))
-    return this
+['get', 'post', 'put', 'patch', 'delete', 'nop'].forEach(method => {
+  Router.prototype[method] = function (path, ...fns) {
+    this.route(path)[method](...fns)
   }
 })
 

@@ -1,8 +1,9 @@
 /*!
- * express
+ * express/impress
  * Copyright(c) 2009-2013 TJ Holowaychuk
  * Copyright(c) 2013 Roman Shtylman
  * Copyright(c) 2014-2015 Douglas Christopher Wilson
+ * Copyright(c) 2020 Tianfu Ma (matianfu@gmail.com)
  * MIT Licensed
  */
 
@@ -10,7 +11,6 @@
  * Module dependencies.
  * @private
  */
-
 const { pathToRegexp } = require('path-to-regexp')
 const debug = require('debug')('express:router:layer')
 
@@ -18,9 +18,7 @@ const debug = require('debug')('express:router:layer')
  * Module variables.
  * @private
  */
-
 class Layer {
-
   /**
    * @param {string} path
    * @param {object} options
