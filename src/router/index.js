@@ -245,8 +245,10 @@ class Router extends Function {
 
       // no more matching layers
       if (idx >= this.stack.length) {
-        setImmediate(done, layerError)
-        return
+        // TODO
+        // setImmediate(done, layerError)
+        console.log(layerError)
+        return done(layerError)
       }
 
       // get pathname of request
@@ -569,42 +571,9 @@ class Router extends Function {
     return route
   }
 
-/**
-
-  get (path, ...fns) {
-    this.route(path).get(...fns)
-    return this
-  }
-
-  post (path, ...fns) {
-    this.route(path).post(...fns)
-    return this
-  }
-
-  put (path, ...fns) {
-    this.route(path).put(...fns)
-    return this
-  }
-
-  patch (path, ...fns) {
-    this.route(path).patch(...fns)
-    return this
-  }
-
-  delete (path, ...fns) {
-    this.route(path).delete(...fns)
-    return this
-  }
-
-  nop (path, ...fns) {
-    this.route(path).nop(...fns)
-    return this
-  }
-
-*/
 }
 
-['get', 'post', 'put', 'patch', 'delete', 'nop'].forEach(method => {
+methods.forEach(method => {
   Router.prototype[method] = function (path, ...fns) {
     this.route(path)[method](...fns)
   }

@@ -1,11 +1,95 @@
+const path = require('path')
 const EventEmitter = require('events')
+const stream = require('stream')
 const uuid = require('uuid')
 
 const { flatten } = require('array-flatten')
 
+const methods = require('./router/methods')
 const Router = require('./router')
 
 const finalhandler = () => {}
+
+/**
+ * {
+ *   to: 'path string',
+ *   from: 'path string',
+ *   body: {
+ *     data:
+ *     chunk:
+ *   }
+ * }
+ *
+ *
+ * {
+ *   to: 'path string',
+ *   from: 'path string',
+ *   data: 
+ *   chunk: 
+ * }
+ */
+class Request {
+  constructor (impress) {
+    this.im = impress
+    this.map = new Map()
+
+    this.dir = '/#requests'
+
+    this.im.router
+      .route(path.join(this.dir, ':id'))
+      .respond(msg => {
+        const id = msg.params.id
+        const req = this.map.get(id)
+        
+        if (req) {
+          if (msg.status === 200) {
+            this.map.delete(id)
+            return req.callback(null, msg.body)
+          } 
+
+          if (msg.status === 201) {
+            const readable = new stream.Readable({ objectMode: true, read (size) {} })
+            req.readable = readable
+            req.source = msg.body.data
+
+            const callback = req.callback
+            delete req.callback 
+
+            callback (null, readable) 
+          } else {
+            const err = new Error()
+            req.callback(err)
+          }
+        }
+      }) 
+      .push(msg => {
+        const id = msg.params.id
+        const req = this.map.get(id)
+
+        req.readable.push(msg.body) 
+        if (msg.eof) req.readable.push(null)
+      })
+  }
+
+  get (to, body, callback) {
+    if (typeof body === 'function') {
+      callback = body
+      body = {}
+    } 
+
+    if (typeof body !== 'object') {
+      return process.nextTick(() => callback(new TypeError('body not an object')))
+    }
+
+    const id = uuid.v4()
+    const from = path.join(this.dir, id) 
+    const msg = { to, from, method: 'GET', body }
+    const req = { id, msg, callback }
+
+    this.im.send(msg)
+    this.map.set(id, req) 
+  }
+}
 
 class Impress extends EventEmitter {
   /**
@@ -28,81 +112,50 @@ class Impress extends EventEmitter {
     this.message = null
 
     /**
-     * outgoing request, aka, as a client
-     */
-    this.requestMap = new Map()
-
-    /**
-     *
-     */
-    this.sources = new Map()
-
-    /**
      * root router
      */
-    this.router = Router({
-      caseSensitive: true, // this.enabled('case sensitive routing'),
-      strict: true // this.enabled('strict routing')
-    })
+    this.router = Router({ caseSensitive: true, strict: true })
+    this.request = new Request(this)
 
-    // this.router.use(query(this.get('query parser fn')))
-    // this.router.use(middleware.init(this))
+    this.conn.on('data', data => this.receive(data))
 
-    this.router.route('/requests/:uuid')
-      .nop(msg => {
-        const path = msg.url
-        const req = this.requestMap.get(path)
-        
-        if (req) {
-          this.requestMap.delete(path)
-          if (msg.status === 200) {
-            req.callback(null, msg.body)
-          } else if (msg.status === 201) {
-
-            new stream.Readable({
-            
-            })
-            
-          } else {
-            const err = new Error()
-            req.callback(err)
-          }
-        }
-      })
-
-    if (conn) {
-      this.conn.on('data', data => this.receive(data))
-    }
+    // this.conn.on('end', () => console.log(this.role + ' end'))
+    // this.conn.on('finish', () => console.log(this.role + ' finish'))
+    // this.conn.on('close', () => console.log(this.role + ' close'))
   }
 
-  send ({ to, from, method, status, body }) {
-    let brief, data
-    if (Buffer.isBuffer(body)) {
-      if (body.length === 0) throw new Error('body length must not be zero')
+  /**
+   * @param {object} msg
+   * @param {string} msg.to - path string
+   * @param {string} msg.from - path string
+   * @param {string} [msg.method] - request method 
+   * @param {number} [msg.status] - status code
+   * @param {boolean|object} [msg.eof] - eof flag
+   */
 
-      data = body
-      brief = {
-        type: 'binary',
-        length: data.length
-      }
-    } else if (body !== undefined) {
-      data = JSON.stringify(body)
-      brief = {
-        type: 'json',
-        length: data.length
-      }
-    }
+  // TODO validate method, noreply, status, eof
+  send ({ to, from, method, status, eof, body }) {
+    const header = { to, from, method, status, eof }
+    const { data, chunk } = body
 
-    const header = { to, from, method, status, body: brief }
+    const hasData = data !== undefined
+    const hasChunk = chunk instanceof Buffer
+
+    if (hasData) header.data = JSON.stringify(data).length
+    if (hasChunk) header.chunk = chunk.length
+
     this.conn.write(JSON.stringify(header))
     this.conn.write('\n')
 
-    if (data) {
-      this.conn.write(data)
+    if (hasData) {
+      this.conn.write(JSON.stringify(data))
       this.conn.write('\n')
     }
 
-    return { header, body }
+    if (hasChunk) {
+      this.conn.write(chunk)
+      this.conn.write('\n')
+    }
   }
 
   /**
@@ -110,31 +163,33 @@ class Impress extends EventEmitter {
    */
   receive (data) {
     while (data.length) {
-      if (this.message) { // expecting body
-        const len = this.bufs.reduce((sum, c) => sum + c.length, 0)
+      if (this.message) { 
+        // expecting data or chunk
+        const msg = this.message
+        const hasData = Number.isInteger(msg.data)
+        const hasChunk = Number.isInteger(msg.chunk)
 
-        if (len + data.length > this.message.body.length) {
-          const msg = this.message
+        // buffer length
+        const buflen = this.bufs.reduce((sum, c) => sum + c.length, 0)
+        const bodylen = hasData ? msg.data + 1 : 0 + hasChunk ? msg.chunk + 1 : 0
+
+        if (buflen + data.length >= bodylen) {
           this.message = null
-          const { type, length } = msg.body
-
-          const body = Buffer.concat([...this.bufs, data.slice(0, length - len)])
+          let body = Buffer.concat([...this.bufs, data.slice(0, bodylen - buflen)])
           this.bufs = []
-          data = data.slice(length - len + 1)
+          data = data.slice(bodylen - buflen)
+          msg.body = {}
 
-          if (type === 'json') {
-            msg.body = JSON.parse(body)
-          } else if (type === 'binary') {
-            msg.body = body
+          if (hasData) {
+            const len = msg.data
+            msg.body.data = JSON.parse(body.slice(0, len)) // OK with trailing LF
+            body = body.slice(len)
+            delete msg.data
           }
 
-          switch (type) {
-            case 'binary':
-              msg.body = body
-            case 'json':
-              msg.body = JSON.parse(body)
-            default:
-              msg.body = JSON.parse(body)
+          if (hasChunk) {
+            msg.body.chunk = body.slice(0, msg.chunk)
+            delete msg.chunk
           }
 
           this.handleMessage(msg)
@@ -152,7 +207,7 @@ class Impress extends EventEmitter {
           const msg = JSON.parse(Buffer.concat([...this.bufs, data.slice(0, idx)]))
           this.bufs = []
           data = data.slice(idx + 1)
-          if (msg.body) {
+          if (msg.data || msg.chunk) {
             this.message = msg
           } else {
             this.handleMessage(msg)
@@ -168,11 +223,9 @@ class Impress extends EventEmitter {
    */
   handleMessage (msg) {
     msg.url = msg.to
-    msg.method = msg.method || 'NOP'
+    if (!msg.method) msg.method = msg.status ? 'RESPOND' : 'PUSH'
     msg.role = this.role
-    msg.app = this
-
-    this.handle(msg)
+    this.handle(msg, this)
   }
 
   /**
@@ -189,27 +242,14 @@ class Impress extends EventEmitter {
 
     router.handle(req, this, done)
   }
-
-  request (to, method, body, callback) {
-    const id = uuid.v4()
-    const from = `/requests/${id}`
-    const req = this.send({ to, from, method: 'GET', body })
-    req.callback = callback
-    this.requestMap.set(from, req)
-  }
-
-  /**
-   * GET may get an object or a stream
-   */
-  get (to, body, callback) {
-    if (typeof body === 'function') {
-      callback = body
-      body = undefined
-    }
-
-    this.request(to, 'GET', body, callback)
-  }
 }
+
+methods.forEach(method => {
+  Impress.prototype[method] = function (...args) {
+    this.router[method](...args)
+    return this
+  } 
+})
 
 const impress = (conn, role) => new Impress(conn, role)
 impress.Router = Router

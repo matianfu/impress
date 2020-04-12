@@ -128,7 +128,7 @@ class Route {
 
     next()
   }
-
+/*
   get (...fns) {
     const handles = flatten(fns)
 
@@ -240,7 +240,7 @@ class Route {
       this.stack.push(Object.assign(new Layer('/', {}, handle), { method: 'nop' }))
     }
   }
-
+*/
   /**
    * Add a handler for all HTTP verbs to this route.
    *
@@ -288,5 +288,29 @@ class Route {
     return this
   }
 }
+
+methods.forEach(method => {
+  Route.prototype[method] = function (...fns) {
+    const handlers = flatten(fns)
+
+    for (let i = 0; i < handlers.length; i++) {
+      const handle = handlers[i]
+
+      if (typeof handle !== 'function') {
+        throw new TypeError(`Route.${method}() requires a callback function`)
+      } 
+
+      debug('%s %o', method, this.path)
+
+      const layer = new Layer('/', {}, handle)
+      layer.method = method
+
+      this.methods[method] = true
+      this.stack.push(layer)
+    }
+
+    return this
+  }
+})
 
 module.exports = Route
