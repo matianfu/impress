@@ -1,1 +1,1 @@
-module.exports = ['get', 'post', 'put', 'patch', 'delete', 'respond', 'push']
+module.exports = ['get', 'post', 'posts', 'put', 'puts', 'patch', 'patchs', 'delete', 'respond', 'push']

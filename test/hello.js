@@ -15,79 +15,107 @@ describe(path.basename(__filename), () => {
   beforeEach(done => rimraf('/run/impress', done))
 
   it('GET /hello', done => {
-    const server = net.createServer(c => {
-      const sapp = impress(c, 'server')
-      sapp.get('/hello', (msg, app) => 
-        app.send({ to: msg.from, status: 200, body: { data: 'cold' } }))
+    const alice = impress()
+    alice.get('/hello', (msg, peer) => peer.respond(msg, 200, { data: 'world' }))
+    alice.listen('/run/impress')
 
-    })
-
-    server.on('error', err => console.log(err))
-    server.listen('/run/impress')
-
-    const client = net.createConnection('/run/impress', () => {
-      const app = impress(client, 'client')
-      app.request.get('/hello', (err, body) => {
-        expect(err).to.equal(null)
-        expect(body).to.deep.equal({ data: 'cold' })
-        client.end()
-        client.on('close', () => {
-          server.close()
-          done()
-        })
-      })
+    const bob = impress()
+    const peer = bob.connect('/run/impress')
+    peer.tag = 'bob'
+    peer.get('/hello', (err, body) => {
+      expect(err).to.equal(null)
+      expect(body).to.deep.equal({ data: 'world' })
+      alice.close()
+      done()
     })
   })
 
   it('GET /hello stream', done => {
-    const server = net.createServer(c => {
-      const peer = impress(c, 'server') 
-      peer.get('/hello', (msg, app) => {
-        const id = uuid.v4() 
-        const source = `/hello/#/sources/${id}`
-    
-        peer.send({
-          to: msg.from,
-          status: 201,
-          body: { data: source }
-        })   
+    const alice = impress()
+    alice.get('/hello', (msg, peer) => {
+      const id = uuid.v4()
+      const source = `/hello/#sources/${peer.id}/${id}`
 
-        peer.send({
-          to: msg.from,
-          body: { data: 'hello' }
-        })
-
-        peer.send({
-          to: msg.from,
-          body: { data: 'world' },
-          eof: true
-        })
-      })
+      peer.respond(msg, 201, { data: source })
+      peer.write({ to: msg.from, body: { data: 'hello' } })
+      peer.write({ to: msg.from, body: { data: 'world', error: null } })
     })
+    alice.listen('/run/impress')
 
-    server.on('error', err => console.log(err))
-    server.listen('/run/impress')
+    const bob = impress()
+    const peer = bob.connect('/run/impress') 
+    peer.tag = 'bob'
 
-    const client = net.createConnection('/run/impress', () => {
-      const app = impress(client, 'client')
-      app.request.get('/hello', (err, body) => {
-        expect(err).to.equal(null)
-        expect(body instanceof Readable).to.equal(true)
-        
-        const buf = []
+    peer.get('/hello', (err, rs) => {
+      expect(err).to.equal(null)
+      expect(rs instanceof Readable).to.equal(true)
 
-        body.on('data', data => buf.push(data))
-        body.on('end', () => {
-          expect(buf).to.deep.equal([
-            { data: 'hello' },
-            { data: 'world' }
-          ])
-
-          done()
-        })
+      const buf = []
+      rs.on('data', data => buf.push(data))
+      rs.on('end', () => {
+        expect(buf).to.deep.equal([
+          { data: 'hello' },
+          { data: 'world' }
+        ])
+        done()
       })
     })
   })
 
+  /**
+   * /hello create a sink and respond with path
+   *
+   * sink {
+   *   id, method, a readable stream
+   * }
+   */
 
+  it('POST /hello stream', done => {
+    const alice = impress()
+    alice.posts('/hello', (msg, peer) => {
+      const id = uuid.v4()
+      const path = `/hello/#sinks/${peer.id}/${id}`
+      const readable = new Readable({ objectMode: true, read () {} })
+      const sink = { id, readable }
+      peer.sinks.set(id, sink)
+      peer.respond(msg, 201, { data: path })
+    })
+    .push('/hello/#sinks/:peerId/:id', (msg, peer) => {
+      const { peerId, id } = msg.params 
+      const sink = peer.sinks.get(id)
+      if (sink && sink.readable && msg.body) {
+        sink.readable.push(msg.body)
+      }
+    })
+    .delete('/hello/#sinks/:peerId/:id', (msg, peer) => {
+      const { peerId, id } = msg.params
+      const sink = peer.sinks.get(id)
+      if (sink) {
+        peer.sinks.delete(id)
+        sink.readable.push(null)
+      }
+
+      const readable = sink.readable
+      const buf = []
+      readable.on('data', data => buf.push(data))
+      readable.on('end', () => {
+        peer.respond(msg, 200, {})
+      })
+    })
+
+    alice.listen('/run/impress')
+
+    const bob = impress()
+    const peer = bob.connect('/run/impress')
+
+    peer.tag = 'bob'
+
+    const ws = peer.posts('/hello')
+    ws.write({ data: 'hello' })
+    ws.write({ data: 'world' })
+    ws.end((err, body) => {
+      expect(err).to.equal(null)
+      done()
+    })
+  })
 })

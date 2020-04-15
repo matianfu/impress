@@ -186,3 +186,47 @@ POST stream
 - -> to SINK
 - -> to SINK, data packet with eof or DELETE
 - <- 
+
+## Stream
+
+在RP里，stream用一对source和sink资源表述。
+
+在restful语义下，source和sink都是动态的；stream仅作为`GET/POSTS/PUTS/PATCHS`中的内嵌过程实现；但这不意味着不可以存在静态的stream，比如通讯双方约定的、无需动态创建的source和sink资源。
+
+stream的建立需要一轮请求和应答，双方分别建立sink和source，然后source一方开始向sink发送数据；这个『需要双方各自建立sink/source的资源标识』的设计方式不常见，这里用unix i/o类比一下。
+
+如果两个unix进程需要通过pipe级联io，例如`A | B`，此时
+1. `A`有一个output file descriptor；
+2. `B`有一个input file descriptor；
+3. `A`和`B`可以各自独立对file descriptor执行操作，例如close；
+
+在这个例子里我们发现，如果一个stream是动态的：
+1. 建立stream时，分配标识（file descriptor）的操作不可避免；
+2. stream的双方，都需要一个stream的资源标识以执行close操作；这个资源标识看起来是“内部”的，但实际上影响的是对方；
+
+在RP里，Sink一方的资源标识对Source一方而言就是它的file descriptor，反之亦然。双方都可以通过操作**对方**的资源标识，来实现对stream的操作。
+
+1. DELETE sink相当于从发送方close流，包括正常的和异常的；
+2. DELETE source相当于从接收方close流，取消继续接受；
+3. PATCH source可以用于实现flow control；
+
+流的数据传输使用raw message，在处理的时候当作`PUSH`操作处理，`PUSH`应该理解为一个伪操作，它和restful method的不同在于它不是一个request/response模式的操作。
+
+## Null Termination
+
+Stream支持使用raw message实现结束，包括正常和异常的；
+
+在message body包含error的时候，认为是流结束标记，如果error是null，是正常结束；否则是异常结束；
+
+## POSTS/PUTS/PATCHS
+
+这一组以`S`结尾的操作，表示会通过Stream上传。
+
+- 请求方先创建一个资源标识，该资源标识既是`respo
+
+第一阶段，请求方先发出请求，应答方分配一个sink path；应答方应该记录`method`属性，但不需要记录`from`，协议不要求后续操作的`from`和第一个消息一致。
+
+请求方获得sink path之后可以开始发送流消息；标准的结束方法是使用`DELETE`操作结束sink，`DELETE`的body如果包含error对象，则视为取消；否则视为`end`。
+
+`eof`标记视为与无参数的`DELETE`等价，有`eof`标记的消息，需提供`from`。
+

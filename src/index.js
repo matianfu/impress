@@ -1,246 +1,270 @@
 const path = require('path')
 const EventEmitter = require('events')
 const stream = require('stream')
-const uuid = require('uuid')
+const net = require('net')
 
+const uuid = require('uuid')
 const { flatten } = require('array-flatten')
+
+const { Duplex } = stream
 
 const methods = require('./router/methods')
 const Router = require('./router')
 
 const finalhandler = () => {}
 
+const Peer = require('./peer')
+
 /**
+ * message in JavaScript object
  * {
  *   to: 'path string',
  *   from: 'path string',
+ *   method: 'GET',     // request message
+ *   status: 100,       // response message (verb: respond)
  *   body: {
- *     data:
- *     chunk:
+ *     data: 'any JSON object, including array, or values',
+ *     chunk: Buffer.alloce(12345)
  *   }
  * }
  *
- *
+ * message header in JSON format
+ * ```json
  * {
- *   to: 'path string',
- *   from: 'path string',
- *   data: 
- *   chunk: 
+ *   "to": "path string",
+ *   "from": "path string",
+ *   "method": "GET",
+ *   "status": 100,
+ *   "data": 123, 
+ *   "chunk": 345 
  * }
+ * ```
+ *
+ * ${header}\n    
+ * ${data}\n      # only if data is provided (not undefined)
+ * ${chunk}\n     # only if chunk is provided (not undefined)
  */
-class Request {
-  constructor (impress) {
-    this.im = impress
-    this.map = new Map()
 
-    this.dir = '/#requests'
+class Impress extends EventEmitter {
+  /**
+   * @param {object} options
+   */
+  constructor (opts) {
+    super()
 
-    this.im.router
-      .route(path.join(this.dir, ':id'))
-      .respond(msg => {
-        const id = msg.params.id
-        const req = this.map.get(id)
+    // each connection is a peer
+    this.peers = []
+
+    /**
+     * root router
+     */
+    this.router = Router({ caseSensitive: true, strict: true })
+
+    this.router.route('/#requests/:peerId/:id')
+      .respond((msg, peer) => {
+        const { peerId, id } = msg.params
+        const req = peer.requests.get(id)
         
         if (req) {
           if (msg.status === 200) {
-            this.map.delete(id)
+            peer.requests.delete(id)
             return req.callback(null, msg.body)
           } 
 
           if (msg.status === 201) {
-            const readable = new stream.Readable({ objectMode: true, read (size) {} })
-            req.readable = readable
-            req.source = msg.body.data
-
-            const callback = req.callback
-            delete req.callback 
-
-            callback (null, readable) 
+            if (req.method === 'GET') {
+              const readable = new stream.Readable({ 
+                objectMode: true, 
+                read (size) {} 
+              })
+              req.readable = readable
+              req.source = msg.body.data
+              const callback = req.callback
+              delete req.callback 
+              callback (null, readable) 
+            } else {
+              req.writable.handle(msg)
+            }
           } else {
             const err = new Error()
             req.callback(err)
           }
         }
       }) 
-      .push(msg => {
-        const id = msg.params.id
-        const req = this.map.get(id)
+      .push((msg, peer) => {
+        const { peerId, id } = msg.params
+        const req = peer.requests.get(id)
 
-        req.readable.push(msg.body) 
-        if (msg.eof) req.readable.push(null)
+        const { data, error, chunk } = msg.body
+
+        if (error) return this.emit(error)
+
+        if (data !== undefined || chunk) {
+          const body = {}
+          if (data !== undefined) body.data = data
+          if (chunk) body.chunk = chunk
+          req.readable.push(body)
+        }
+
+        if (error === null) req.readable.push(null)
       })
-  }
-
-  get (to, body, callback) {
-    if (typeof body === 'function') {
-      callback = body
-      body = {}
-    } 
-
-    if (typeof body !== 'object') {
-      return process.nextTick(() => callback(new TypeError('body not an object')))
-    }
-
-    const id = uuid.v4()
-    const from = path.join(this.dir, id) 
-    const msg = { to, from, method: 'GET', body }
-    const req = { id, msg, callback }
-
-    this.im.send(msg)
-    this.map.set(id, req) 
-  }
-}
-
-class Impress extends EventEmitter {
-  /**
-   * @param {object} conn - a connection
-   */
-  constructor (conn, role) {
-    super()
-
-    this.conn = conn
-    this.role = role
-
-    /**
-     * buffer header or body fragments
-     */
-    this.bufs = []
-
-    /**
-     * buffer incomplete message
-     */
-    this.message = null
-
-    /**
-     * root router
-     */
-    this.router = Router({ caseSensitive: true, strict: true })
-    this.request = new Request(this)
-
-    this.conn.on('data', data => this.receive(data))
 
     // this.conn.on('end', () => console.log(this.role + ' end'))
     // this.conn.on('finish', () => console.log(this.role + ' finish'))
     // this.conn.on('close', () => console.log(this.role + ' close'))
   }
 
-  /**
-   * @param {object} msg
-   * @param {string} msg.to - path string
-   * @param {string} msg.from - path string
-   * @param {string} [msg.method] - request method 
-   * @param {number} [msg.status] - status code
-   * @param {boolean|object} [msg.eof] - eof flag
-   */
+  addPeer (conn) {
+    const peer = new Peer(this, conn)   
+    peer.on('data', msg => this.handle(msg, peer)) 
+    peer.on('error', error => this.handleError(err))
 
-  // TODO validate method, noreply, status, eof
-  send ({ to, from, method, status, eof, body }) {
-    const header = { to, from, method, status, eof }
-    const { data, chunk } = body
+    peer.on('finish', () => console.log(peer.tag || peer.id, 'finished'))
+    peer.on('end', () => {
+      const idx = this.peers.find(p => p === peer)
+      if (idx === -1) return
+      this.peers = [...this.peers.slice(0, idx), ...this.peers.slice(idx + 1)]
+      
+      console.log(peer.tag || peer.id, 'end')
+    })
 
-    const hasData = data !== undefined
-    const hasChunk = chunk instanceof Buffer
-
-    if (hasData) header.data = JSON.stringify(data).length
-    if (hasChunk) header.chunk = chunk.length
-
-    this.conn.write(JSON.stringify(header))
-    this.conn.write('\n')
-
-    if (hasData) {
-      this.conn.write(JSON.stringify(data))
-      this.conn.write('\n')
-    }
-
-    if (hasChunk) {
-      this.conn.write(chunk)
-      this.conn.write('\n')
-    }
+    this.peers.push(peer)
+    return peer
   }
 
   /**
-   * Decode generate message from incoming data
+   * listen on a port or socket, all incomming connections are added to peers
    */
-  receive (data) {
-    while (data.length) {
-      if (this.message) { 
-        // expecting data or chunk
-        const msg = this.message
-        const hasData = Number.isInteger(msg.data)
-        const hasChunk = Number.isInteger(msg.chunk)
+  listen (...args) {
+    const listener = args.length && typeof args[args.length - 1] === 'function' && args.pop()
 
-        // buffer length
-        const buflen = this.bufs.reduce((sum, c) => sum + c.length, 0)
-        const bodylen = hasData ? msg.data + 1 : 0 + hasChunk ? msg.chunk + 1 : 0
+    this.server = net.createServer(conn => {
+      const peer = this.addPeer(conn)
+    })
 
-        if (buflen + data.length >= bodylen) {
-          this.message = null
-          let body = Buffer.concat([...this.bufs, data.slice(0, bodylen - buflen)])
-          this.bufs = []
-          data = data.slice(bodylen - buflen)
-          msg.body = {}
+    this.server.on('error', err => {}) 
+    this.server.listen(...args, () => {
+      if (listener) listener()
+    })
+  }
 
-          if (hasData) {
-            const len = msg.data
-            msg.body.data = JSON.parse(body.slice(0, len)) // OK with trailing LF
-            body = body.slice(len)
-            delete msg.data
-          }
-
-          if (hasChunk) {
-            msg.body.chunk = body.slice(0, msg.chunk)
-            delete msg.chunk
-          }
-
-          this.handleMessage(msg)
-        } else {
-          this.bufs.push(data)
-          data = data.slice(data.length)
-        }
-      } else {
-        // expecting header
-        const idx = data.indexOf('\n')
-        if (idx === -1) {
-          this.bufs.push(data.slice(0, data.length))
-          data = data.slice(data.length)
-        } else {
-          const msg = JSON.parse(Buffer.concat([...this.bufs, data.slice(0, idx)]))
-          this.bufs = []
-          data = data.slice(idx + 1)
-          if (msg.data || msg.chunk) {
-            this.message = msg
-          } else {
-            this.handleMessage(msg)
-          }
-        }
-      }
-    }
+  close () {
+    this.server.close()
   }
 
   /**
-   * all messages are handled via routing, no hacking
-   * not all messages have methods, messages without method will be set to 'NOP' 
+   * connect to given host
    */
-  handleMessage (msg) {
-    msg.url = msg.to
-    if (!msg.method) msg.method = msg.status ? 'RESPOND' : 'PUSH'
-    msg.role = this.role
-    this.handle(msg, this)
+  connect (...args) {
+    const conn = net.createConnection(...args)
+    return this.addPeer(conn)
   }
 
   /**
    * callback is used to override default finalhandler (404)
    */
-  handle (req, res, callback) {
-    const router = this.router
-    let done = callback || finalhandler(req, res, {})
+  handle (msg, peer, callback = finalhandler(msg, peer, {})) {
+    msg.url = msg.to
 
-    if (!router) {
-      done()
+    msg.method = msg.method || (msg.status ? 'RESPOND' : 'PUSH')
+    this.router.handle(msg, peer, callback)
+  }
+
+  peerGet (peer, to, body, callback) {
+    if (typeof body === 'function') {
+      callback = body
+      body = {}
+    } 
+
+    if (typeof body !== 'object') {
+      process.nextTick(() => callback(new TypeError('body not an object')))
       return
     }
 
-    router.handle(req, this, done)
+    const id = uuid.v4()
+    const from = path.join('/#requests', peer.id, id) 
+    const msg = { to, from, method: 'GET', body }
+    const req = { id, method: 'GET', msg, callback }
+
+    peer.write(msg)
+    peer.requests.set(id, req)
+  }
+
+  peerPosts (peer, to, body = {}) {
+    const id = uuid.v4()
+    const from = path.join('/#requests', peer.id, id)
+    const msg = { to, from, method: 'POSTS', body }
+
+    class Writable1 extends stream.Writable {
+      constructor (peer, to, body) {
+        super({ objectMode: true })
+        this.state = 0    // expect status message
+        this.peer = peer
+        this.sink = null
+      }
+
+      _write (body, _, callback) {
+        if (this.sink) {
+          this.peer.write({ to: this.sink, body })
+          callback()
+        } else {
+          this.pending = { body, callback }
+        }
+      }
+
+      _final (callback) {
+        this.peer.delete(this.sink, (err, body) => {
+          this.endResponse = { err, body }
+          callback()
+        })
+      }
+
+      end (callback) {
+        super.end(() => {
+          const { err, body } = this.endResponse
+          callback(err, body)
+        })
+      }
+
+      handle (msg) {
+        if (this.state === 0) {
+          if (msg.status === 201) {
+            this.state = 1
+
+            this.sink = msg.body.data
+            if (this.pending) {
+              const { body, callback } = this.pending
+              delete this.pending
+              this.peer.write({ to: this.sink, body })
+              callback()
+            }
+          }
+        }
+      }
+    } 
+
+    const writable = new Writable1(peer, to, body)
+    const req = { id, msg, writable }
+    peer.write(msg)    
+    peer.requests.set(id, req)
+    return writable
+  }
+
+  peerDelete (peer, to, body, callback) {
+    if (typeof to !== 'string') throw new TypeError('invalid recipient')
+
+    if (typeof body === 'function') {
+      callback = body
+      body = {}
+    }
+
+    const id = uuid.v4()
+    const from = path.join('/#requests', peer.id, id)
+    const msg = { to, from, method: 'DELETE', body }
+    const req = { id, method: 'DELETE', callback }
+
+    peer.write(msg)
+    peer.requests.set(id, req)
   }
 }
 
@@ -251,7 +275,7 @@ methods.forEach(method => {
   } 
 })
 
-const impress = (conn, role) => new Impress(conn, role)
+const impress = (opts) => new Impress(opts)
 impress.Router = Router
 
 module.exports = impress
