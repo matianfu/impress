@@ -12,15 +12,53 @@ message有两种格式，一种以JavaScript对象定义，另一种是传输格
 
 ```js
 {
-    to: '/path/to/target',      // target, mandatory
-    from: '/path/to/source',    // source, optional
-    method: 'GET',
+    to: '/path/to/recipient',   // 
+    from: '/path/to/source',    // return address, source, or sink, optional
+    method: 'GET',              // request
+    status: 200,                // response
     body: {                     // mandatory
-        data,                   // object, array, primitive values, optional
-        chunk                   // Buffer, optional
+        data,                   // any JavaScript values excepts undefined
+        error,                  // null or object
+        chunk                   // Buffer,
     }
 }
 ```
+
+在RP中，通讯的双方均需维护一个namespace，即时一方只是请求方的角色；
+
+`to`是目标资源标识；所有message必须有这个属性；其值是一个resource path；
+
+`from`是可选的字段，它可以是`request`消息中的`return address`，或者在创建流的时候，作为先创建的source或者sink；`from`也是一个resource path；
+
+resource path是一个normalized绝对路径，不可以有trailing slash；
+
+一个message可以是request message，response message，或者raw message；
+
+request message必须有method属性；method的合法值包括：
+
+```
+GET, 
+POST, POST$, POSTS,
+PUT， PUST$, PUTS,
+PATCH, PATCH$, PATCHS,
+DELETE, DELETE$  
+``` 
+
+`$`结尾的版本是这些操作无需返回，相当于no reply；
+
+`S`结尾的版本，包括`POSTS`/`PUTS`/`PATCHS`，是流式上传内容的操作；
+
+GET可以获得一个单一message返回，也可以获得一个下行stream，取决于应答方；
+
+POST/PUT/PATCH只能是单一request message获得单一response message的方式；
+
+如果一个message有status字段，则为response message；对于response message，如果status code为2xx，body包含data和chunk；如果status code为4xx/5xx，body只包含返回的error；
+
+
+
+
+
+
 
 它看起来很象一个node里的request/response对象，只是简化很多。
 
@@ -230,3 +268,17 @@ Stream支持使用raw message实现结束，包括正常和异常的；
 
 `eof`标记视为与无参数的`DELETE`等价，有`eof`标记的消息，需提供`from`。
 
+## Source Stream
+
+A source stream is created on 'server' side to respond a GET request. The stream is a Writable stream.
+
+
+Events:
+
+Write -> send written body to peer
+End -> send EoF to peer (shouldUnmount)
+
+Destroy -> send Error to peer (shouldUnmount)
+
+Peer Delete -> emit Error and destroy
+Peer Disconnect -> emit Error and destroy

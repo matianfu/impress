@@ -14,14 +14,28 @@ const impress = require('src/index')
 describe(path.basename(__filename), () => {
   beforeEach(done => rimraf('/run/impress', done))
 
+  // TODO GET some non-existent thing!
+
   it('GET /hello', done => {
     const alice = impress()
+
     alice.get('/hello', (msg, peer) => peer.respond(msg, 200, { data: 'world' }))
+
+    // 404 equivalent
+    alice.use((msg, peer, next) => {
+      const err = new Error('no handler')
+      next(err)
+    })
+
+    // 500 equivalent
+    alice.use((err, msg, peer, next) => {
+      console.log(err)
+    })
+
     alice.listen('/run/impress')
 
     const bob = impress()
     const peer = bob.connect('/run/impress')
-    peer.tag = 'bob'
     peer.get('/hello', (err, body) => {
       expect(err).to.equal(null)
       expect(body).to.deep.equal({ data: 'world' })
@@ -30,12 +44,14 @@ describe(path.basename(__filename), () => {
     })
   })
 
+  /**
+   * 
+   */
   it('GET /hello stream', done => {
     const alice = impress()
     alice.get('/hello', (msg, peer) => {
       const id = uuid.v4()
       const source = `/hello/#sources/${peer.id}/${id}`
-
       peer.respond(msg, 201, { data: source })
       peer.write({ to: msg.from, body: { data: 'hello' } })
       peer.write({ to: msg.from, body: { data: 'world', error: null } })
@@ -44,7 +60,6 @@ describe(path.basename(__filename), () => {
 
     const bob = impress()
     const peer = bob.connect('/run/impress') 
-    peer.tag = 'bob'
 
     peer.get('/hello', (err, rs) => {
       expect(err).to.equal(null)

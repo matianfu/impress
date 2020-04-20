@@ -41,8 +41,9 @@ const Peer = require('./peer')
  * ```
  *
  * ${header}\n    
- * ${data}\n      # only if data is provided (not undefined)
- * ${chunk}\n     # only if chunk is provided (not undefined)
+ * ${data}\n      # if data is provided
+ * ${error}\n     # if error is provided
+ * ${chunk}\n     # if chunk is provided
  */
 
 class Impress extends EventEmitter {
@@ -61,6 +62,10 @@ class Impress extends EventEmitter {
     this.router = Router({ caseSensitive: true, strict: true })
 
     this.router.route('/#requests/:peerId/:id')
+      .all((msg, peer, next) => {
+        console.log(`=> ${msg.method} ${msg.to}`)
+        next()
+      })
       .respond((msg, peer) => {
         const { peerId, id } = msg.params
         const req = peer.requests.get(id)
@@ -73,7 +78,7 @@ class Impress extends EventEmitter {
 
           if (msg.status === 201) {
             if (req.method === 'GET') {
-              const readable = new stream.Readable({ 
+              const readable = new stream.Readable({
                 objectMode: true, 
                 read (size) {} 
               })
@@ -158,6 +163,10 @@ class Impress extends EventEmitter {
   connect (...args) {
     const conn = net.createConnection(...args)
     return this.addPeer(conn)
+  }
+
+  use (...args) {
+    this.router.use(...args)
   }
 
   /**

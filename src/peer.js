@@ -1,5 +1,5 @@
 const path = require('path')
-const { Duplex } = require('stream')
+const { Readable, Writable, Duplex } = require('stream')
 
 const uuid = require('uuid')
 
@@ -134,9 +134,9 @@ class Peer extends Duplex {
           if (hasChunk) {
             msg.body.chunk = body.slice(0, msg.chunk)
           }
-
           delete msg.chunk
           this.push(msg)
+
         } else {
           this.bufs.push(data)
           data = data.slice(data.length)
@@ -161,21 +161,134 @@ class Peer extends Duplex {
     }
   }
 
+  /**
+   *
+   */
+  handleRequest (msg, peer, next) {
+     
+  }
+
+  /**
+   *
+   */
+  request (to, method, body, callback) {
+    if (typeof to !== 'string') {
+      throw new TypeError('request path not a string')
+    }
+
+    if (path.normalize(to) !== to) {
+      throw new Error('request path not normalized')
+    }
+
+    if (!path.isAbsolute(to)) {
+      throw new Error('request path not an absolute one')
+    }
+
+    if (to !== '/' && to.endsWith('/')) {
+      throw new Error('trailing slash (/) not allowed in request path')
+    }
+
+    const methods = ['GET', 'POST', 'POST$', 'PUT', 'PUT$', 'PATCH', 'PATCH$', 'DELETE']
+    if (!methods.includes(method)) {
+      throw new Error(`unknown method ${method}`)
+    }
+
+    if (typeof body === 'function') {
+      callback = body
+      body = {}
+    }
+
+    if (typeof body !== 'object' || body === null) {
+      throw new Error('body not a non-null object')
+    }
+
+    if (typeof callback !== 'function') {
+      throw new Error('callback not a function')
+    }
+
+    const id = uuid.v4()
+    const from = path.join('/#requests/', this.id, id) 
+    const msg = { to, from, method, body }
+    const req = { id, method, callback }
+
+    this.write(msg)
+    this.requests.set(id, req) 
+  }
+
   get (to, body, callback) {
-    this.im.peerGet(this, to, body, callback) 
+    this.request(to, 'GET', body, callback)
+  }
+
+  post (to, body, callback) {
+    this.request(to, 'POST', body, callback)
+  }
+
+  postNr (to, body, callback) {
+    this.request(to, 'POST$', body, callback)
+  }
+
+  put (to, body, callback) {
+    this.request(to, 'PUT', body, callback)
+  }
+
+  putNr (to, body, callback) {
+    this.request(to, 'PUT$', body, callback)
+  }
+
+  patch (to, body, callback) {
+    this.request(to, 'PATCH', body, callback)
+  }
+
+  patchNr (to, body, callback) {
+    this.request(to, 'PATCH$', body, callback)
+  }
+
+  delete (to, body, callback) {
+    this.request(to, 'DELETE', body, callback)
+  }
+
+  deleteNr (to, body, callback) {
+    this.request(to, 'DELETE$', body, callback)
   }
 
   posts (to, body) {
     return this.im.peerPosts(this, to, body)
   }
 
-  delete (to, body, callback) {
-    this.im.peerDelete(this, to, body, callback)
-  }
-
   respond (msg, status, body) {
     if (typeof msg.from !== 'string' || msg.noreply) return
     this.write({ to: msg.from, status, body })
+  }
+
+  createSourceStream (msg, peer) {
+    const id = uuid.v4() 
+    const from = path.join(msg.to, '#sources', this.id, id)
+   
+    const writable = new stream.Writable({
+      objectMode: true,
+      write (body, encoding, callback) {
+        this.write({ to: this.to, body })
+        callback()
+      },
+
+      destroy () {
+        // TODO
+      },
+
+      final (body, encoding, callback) {
+        if (typeof body === 'function') {
+            
+        }
+      },
+
+      detach () {
+        
+      }
+    })
+
+    writable.to = msg.from
+    writable.from = from
+    writable.peer = peer
   }
 }
 
