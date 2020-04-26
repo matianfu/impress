@@ -33,7 +33,11 @@ class Peer extends Duplex {
      */
     this.sinks = new Map()
 
-    conn.on('data', data => this.receive(data))
+    this.responses = new Map()
+
+    conn.on('data', data => {
+      this.receive(data)
+    })
 
     conn.on('finish', () => {
       console.log(this.tag || this.id, 'conn finish')
@@ -53,29 +57,37 @@ class Peer extends Duplex {
     const { to, from, method, status, body } = msg 
 
     const header = { to, from, method, status  }
-    const { data, error, chunk } = body
- 
+    const { error, meta, data, chunk } = body
+
+    // error could be an Error, an object, a string
+    const hasError = !!error
+    // meta must be an object 
+    const hasMeta = !!meta
     // data could be anything 
     const hasData = data !== undefined
-    // error must be an Error
-    const hasError = error === null || error instanceof Error
     // chunk must be a Buffer
     const hasChunk = chunk instanceof Buffer
 
-    if (hasData) header.data = JSON.stringify(data).length
     if (hasError) header.error = ErrorStringify(error).length
+    if (hasMeta) header.meta = JSON.stringify(meta).length 
+    if (hasData) header.data = JSON.stringify(data).length
     if (hasChunk) header.chunk = chunk.length
 
     this.conn.write(JSON.stringify(header))
     this.conn.write('\n')
 
-    if (hasData) {
-      this.conn.write(JSON.stringify(data))
+    if (hasError) {
+      this.conn.write(ErrorStringify(error))
       this.conn.write('\n')
     }
 
-    if (hasError) {
-      this.conn.write(ErrorStringify(error))
+    if (hasMeta) {
+      this.conn.write(JSON.stringify(meta))
+      this.conn.write('\n')
+    }
+
+    if (hasData) {
+      this.conn.write(JSON.stringify(data))
       this.conn.write('\n')
     }
 
@@ -100,14 +112,19 @@ class Peer extends Duplex {
         // expecting data or chunk
         const msg = this.message
 
-        const hasData = Number.isInteger(msg.data)
         const hasError = Number.isInteger(msg.error)
+        const hasMeta = Number.isInteger(msg.meta)
+        const hasData = Number.isInteger(msg.data)
         const hasChunk = Number.isInteger(msg.chunk)
+
+        console.log('hasMeta', hasMeta)
 
         // buffer length
         const buflen = this.bufs.reduce((sum, c) => sum + c.length, 0)
-        const bodylen = (hasData ? msg.data + 1 : 0) + 
-          (hasError ? msg.error + 1 : 0) +
+
+        const bodylen = (hasError ? msg.error + 1 : 0) +
+          (hasMeta ? msg.meta + 1 : 0) +
+          (hasData ? msg.data + 1 : 0) +
           (hasChunk ? msg.chunk + 1 : 0)
 
         if (buflen + data.length >= bodylen) {
@@ -117,19 +134,26 @@ class Peer extends Duplex {
           data = data.slice(bodylen - buflen)
           msg.body = {}
 
-          if (hasData) {
-            const len = msg.data
-            msg.body.data = JSON.parse(body.slice(0, len)) // OK with trailing LF
-            body = body.slice(len + 1)
-          }
-          delete msg.data
-
           if (hasError) {
             const len = msg.error
             msg.body.error = JSON.parse(body.slice(0, len))
             body = body.slice(len + 1)
           }
           delete msg.error
+
+          if (hasMeta) {
+            const len = msg.meta
+            msg.body.meta = JSON.parse(body.slice(0, len))
+            body = body.slice(len + 1)
+          }
+          delete msg.meta
+
+          if (hasData) {
+            const len = msg.data
+            msg.body.data = JSON.parse(body.slice(0, len)) // OK with trailing LF
+            body = body.slice(len + 1)
+          }
+          delete msg.data
 
           if (hasChunk) {
             msg.body.chunk = body.slice(0, msg.chunk)
@@ -151,7 +175,7 @@ class Peer extends Duplex {
           const msg = JSON.parse(Buffer.concat([...this.bufs, data.slice(0, idx)]))
           this.bufs = []
           data = data.slice(idx + 1)
-          if (msg.data || msg.chunk) {
+          if (msg.error || msg.meta || msg.data || msg.chunk) {
             this.message = msg
           } else {
             this.push(msg)

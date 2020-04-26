@@ -1,7 +1,40 @@
-const { Writable } = require('stream')
+const { Writable, Duplex } = require('stream')
 
 /**
- * A ResponseSource is a Writable stream at the responder side.
+ *
+ * | step | request              |    | response                | response state |
+ * |------|----------------------|----|-------------------------|----------------|
+ * | 1    | uri, method, [auth]  | -> |                         |                |
+ * | 2    |                      | <- | 404 not found           |                |
+ * |      |                      |    | 405 method not allowed  |                |
+ * |      |                      |    | 401 unauthorized        |                |
+ * |      |                      |    | 100 continue            | sink           |
+ * | 3    | request data (close) | -> |                         |                |
+ * |      |                      | <- | 400 bad request         |                |
+ * |      |                      |    | 403 forbidden           |                |
+ * |      |                      |    | 500 internal error      |                |
+ * |      |                      |    | 503 unavailable         |                |
+ * | 4    |                      | <- | 200 success             | source         |
+ * | 5    | (close)              | <- | response data (close)   |                |
+ *
+ * sink state
+ * 1) handle request data
+ * 2) handle request close (end or abort)
+ *
+ * switch to source state by what method, respond?
+ * 
+ * source state
+ * 1) handle request close (abort)
+ * 2) handle internal error and destory with error?
+ * 3) proper close (end), YES end is appropriate for this purpose
+ */
+
+/**
+ * Source has write and end method, accepts only DELETE$ method, which is translated to 'abort'
+ *
+ * Sink has no write method, but does have end method (it is a response after all!), accepts PUSH method
+ * 
+ * A Response is a Writable stream at the responder side.
  *
  * It is modelled as a stream of fragmented response. 
  *
@@ -12,8 +45,10 @@ const { Writable } = require('stream')
  * execute an error handling code path. Set up the status code with `status()` method, 
  * then trigger `end()` with an optional error argument is OK. There is no need to call
  * `destroy` directly.
+ *
+ * 
  */ 
-class ResponseSource extends Writable {
+class Response extends Duplex {
   /**
    * @param {object} props
    * @param {string} props.id
@@ -24,15 +59,22 @@ class ResponseSource extends Writable {
    */
   constructor (props) {
 
+    props.state = props.type
+
+    if (props.state !== 'source' && props.state !== 'sink') {
+      throw new Error('response stream type not defined')
+    }
+
     props.objectMode = true
+    props.allowHalfOpen = true
 
     /**
      * don't use autoDestroy, error may be suppressed.
      */
     super(props)
 
-    const { id, to, from, send, streamTerminated } = props 
-    Object.assign(this, { id, to, from, send, streamTerminated })
+    const { id, state, to, from, send, streamTerminated } = props 
+    Object.assign(this, { id, state, to, from, send, streamTerminated })
 
     /**
      * `Destroy()` is the only way putting stream into destroyed state. If
@@ -53,7 +95,13 @@ class ResponseSource extends Writable {
       this.destroy()
     })
 
-    this.send({ to, status: 100, body: { data: from } }) 
+    const status = this.state === 'source' ? 200 : 100
+    const meta = this.state === 'source' ? { source: from } : { sink: from }
+    this.send({ to, status, body: { meta } })
+  }
+
+  setState (state) {
+    this.state = state
   }
 
   /**
@@ -71,6 +119,20 @@ class ResponseSource extends Writable {
   }
 
   /**
+   * writable.write(chunk[, encoding][, callback])
+   *
+   * this function is forbidden for sink
+   */
+  write (...args) {
+    if (this.state === 'sink') {
+      const err = new Error('write is forbidden for sink') 
+      this.emit(err)
+    } else {
+      super.write(...args)
+    }
+  }
+
+  /**
    *
    */
   _final (callback) {
@@ -85,7 +147,10 @@ class ResponseSource extends Writable {
     if (!this.skipResponse) {
       const { to, from, statusCode } = this
 
-      if (statusCode >= 200 && statusCode < 300) {
+      if (this.state === 'source') { // status code sent already
+        const error = { message: 'internal error' }
+        this.send({ to, from, body: { error } }) 
+      } else if (statusCode >= 200 && statusCode < 300) {
         let body
         if (this.body) {
           body = {}
@@ -138,6 +203,9 @@ class ResponseSource extends Writable {
    * If status code is not set, defaults to 200 
    */
   end (body, encoding, callback) {
+
+//    if (this.type === 'source') throw new Error('stack')
+
     if (!this.statusCode) this.statusCode = 200
 
     if (typeof body === 'function') {
@@ -152,12 +220,44 @@ class ResponseSource extends Writable {
    * The only message source-stream handles is the DELETE
    */
   handle (msg) {
-    if (msg.method !== 'DELETE') return
-    this.skipResponse = true
-    this.destroy()
+/**
+    if (msg.method === 'DELETE') {
+      this.skipResponse = true
+      this.destroy()
 
-    // this abort do emit before close, see test
-    this.emit('abort') 
+      // this abort do emit before close, see test
+      this.emit('abort') 
+    } else if (msg.method === 'PUSH' && this.type === 'sink') {
+      const { data, error, chunk } = msg.body
+
+      if (error) {
+        // const err = new Error(error.message || 'aborted') 
+        // this.emit('abort')
+        this.skipResponse = true
+        this.destroy()
+        
+        this.emit('abort')
+      } else {
+        if (data !== undefined || chunk !== undefined) {
+          const body = {}
+          if (data !== undefined) body.data = data
+          if (chunk !== undefined) body.chunk = chunk
+          this.push(body)
+        }
+        
+        if (error === null) {
+          this.push(null)
+        }
+      }
+    }
+
+*/
+    if (msg.method !== 'PUSH') return
+
+    if (this.type === 'source') {
+      
+    } else {
+    }
   }
 
   /**    
@@ -202,4 +302,4 @@ class ResponseSource extends Writable {
   }
 }
 
-module.exports = ResponseSource
+module.exports = Response

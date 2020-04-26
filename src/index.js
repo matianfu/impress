@@ -71,12 +71,31 @@ class Impress extends EventEmitter {
         const req = peer.requests.get(id)
         
         if (req) {
+          if (req.method === 'GET' && msg.status === 200 && msg.body.meta) { 
+            const readable = new stream.Readable({
+              objectMode: true,
+              read (size) {}
+            })
+            req.readable = readable
+            req.source = msg.body.meta.source
+            const callback = req.callback
+            delete req.callback
+            callback(null, readable)
+            return 
+          }
+
           if (msg.status === 200) {
             peer.requests.delete(id)
-            return req.callback(null, msg.body)
+
+            try {
+              return req.callback(null, msg.body)
+            } catch (e) {
+              console.log(req)
+            }
+            return 
           } 
 
-          if (msg.status === 201) {
+          if (msg.status === 100) {
             if (req.method === 'GET') {
               const readable = new stream.Readable({
                 objectMode: true, 
@@ -91,14 +110,17 @@ class Impress extends EventEmitter {
               req.writable.handle(msg)
             }
           } else {
-            const err = new Error()
+            const err = new Error('12345678')
             req.callback(err)
           }
         }
+
       }) 
       .push((msg, peer) => {
         const { peerId, id } = msg.params
         const req = peer.requests.get(id)
+
+        msg.body = msg.body || {}
 
         const { data, error, chunk } = msg.body
 
@@ -109,9 +131,9 @@ class Impress extends EventEmitter {
           if (data !== undefined) body.data = data
           if (chunk) body.chunk = chunk
           req.readable.push(body)
+        } else {
+          req.readable.push(null)
         }
-
-        if (error === null) req.readable.push(null)
       })
 
     // this.conn.on('end', () => console.log(this.role + ' end'))
@@ -174,7 +196,6 @@ class Impress extends EventEmitter {
    */
   handle (msg, peer, callback = finalhandler(msg, peer, {})) {
     msg.url = msg.to
-
     msg.method = msg.method || (msg.status ? 'RESPOND' : 'PUSH')
     this.router.handle(msg, peer, callback)
   }

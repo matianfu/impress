@@ -9,13 +9,11 @@ const mkdirp = require('mkdirp')
 const rimraf = require('rimraf')
 const expect = require('chai').expect
 
-const Response = require('src/response')
+// const Response = require('src/response')
 const impress = require('src/index') 
 
 describe(path.basename(__filename), () => {
   beforeEach(done => rimraf('/run/impress', done))
-
-  // TODO GET some non-existent thing!
 
   it.only('GET /hello', done => {
     const alice = impress()

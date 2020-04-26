@@ -2,7 +2,30 @@
 
 RP协议本身不限语言，有Wire Format定义；但本文档假设是讨论RP在`node.js`中的实现。
 
-# 1. Message
+# 1. Request/Response
+
+HTTP Request/Response是简单实用的设计。
+
+简单体现在它的应用API事实上把TCP的Duplex Stream退化成了Half Duplex Stream，且只通讯一轮（round-trip）。
+
+实用体现在它的泛化过程可以如下描述：
+
+| step | request             |    | response |
+|------|---------------------|----|----------|
+| 1    | uri, method, [auth] | -> |          |
+| 2    |                     | <- | 404 resouce not found<br/> 405 method not allowed<br/> 401 unauthorized<br/> 100 continue |
+| 3    | request data        | ->
+| 4    |			         | <- | 400 bad request<br/> 403 forbidden<br/> 500 internal error<br/> 503 unavailable<br/> 200 success
+| 5    |                     | <- | response data	
+
+在这个设计里充分考虑了网络带宽的有效利用和降低总体访问延迟，体现在：
+1. 在上传大量request data之前，先检查uri, method, auth是否满足要求；如果满足，以100 CONTINUE继续；
+2. 这个泛化过程可以退化，step 3 request data可以并入 step 1，相应的step 2和4合并，也可以继续合并step 5；
+3. 没有提供流语义，step 3/5的流控、取消和结束都是在TCP层面完成，应用以流事件或错误事件处理；
+
+> 这里存在*worse is better*的设计哲学，例如step 4的`200`返回后，step 5仍然可能出现错误，但这样设计容易处理；另一种设计方式是混合Request/Response语义和流语义（编程上相当于implements两个interface），例如把response data看作fragmented response，
+
+# 2. Message
 
 message是RP协议传输数据的最小单元；一个message是一个自包含、完整的数据结构。
 
@@ -17,6 +40,7 @@ message有两种格式，一种以JavaScript对象定义，另一种是传输格
     method: 'GET',              // request
     status: 200,                // response
     body: {                     // mandatory
+        meta,                   // metadata describe 
         data,                   // any JavaScript values excepts undefined
         error,                  // null or object
         chunk                   // Buffer,
@@ -62,7 +86,7 @@ POST/PUT/PATCH只能是单一request message获得单一response message的方�
 
 它看起来很象一个node里的request/response对象，只是简化很多。
 
-# 2. Message Type
+# 3. Message Type
 
 RP中使用message替代HTTP来实现restful资源模型。
 
@@ -133,13 +157,13 @@ Wire format的问题：
 
 好处：减少一次JSON
 
-# 3. Message Properties
+# 4. Message Properties
 
-## 3.1. `to`
+## 4.1. `to`
 
 `to`是message recipient，格式为path string
 
-## 3.2. `from`
+## 4.2. `from`
 
 `from`在字面的含义上是消息的发出者；但它实际上的含义是接收方拿到的一个channel（π calculus意义上的name/channel），在request/response上下文下，它应该被解释为`reply-to`；在stream上下文下，它应该被解释为`source`，可以类比(input) file descriptor。
 
