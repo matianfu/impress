@@ -71,13 +71,13 @@ class Impress extends EventEmitter {
         const req = peer.requests.get(id)
         
         if (req) {
-          if (req.method === 'GET' && msg.status === 200 && msg.body.meta) { 
+          if (req.method === 'GET' && msg.status === 200 && msg.body.stream) { 
             const readable = new stream.Readable({
               objectMode: true,
               read (size) {}
             })
             req.readable = readable
-            req.source = msg.body.meta.source
+            req.source = msg.body.stream.source
             const callback = req.callback
             delete req.callback
             callback(null, readable)

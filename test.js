@@ -1,24 +1,44 @@
-const impress = require('./src/index') 
+const stream = require('stream')
 
-const app = impress() 
+class Dup extends stream.Duplex {
+  constructor (props = {}) {
+    props.allowHalfOpen = true
+    props.autoDestroy = true
+    super(props)  
+  }
 
-app.use('/', function(req, res, next) {
-  console.log('pig pig')
-  next()
-})
+  _write (chunk, encoding, callback) {
+    callback()
+  }
 
-const router = impress.Router()
-router.get('/bar', function (req, res, next) {
-  console.log('bling bling')
-})
+  _final (callback) {
+    callback()
+  }
 
-app.use('/foo', router)
+  _destroy(err, callback) {
+    callback()
+  }
 
-const req = {
-  method: 'GET',
-  url: '/foo/bar'
+  _read (size) {
+  }
 }
 
-const res = {}
+const dup = new Dup()
 
-app.handle(req, res, () => {})
+dup.on('data', data => console.log('data', data))
+
+dup.on('error', err => console.log('error---', err))
+dup.on('end', () => console.log('end'))
+dup.on('finish', () => console.log('finish'))
+dup.on('close', () => console.log('close'))
+
+/**
+dup.end()
+dup.push('world')
+dup.push(null)
+*/
+
+dup.destroy(new Error('stack'))
+
+// dup.push(null)
+// dup.end()

@@ -13,12 +13,20 @@ const expect = require('chai').expect
 const impress = require('src/index') 
 
 describe(path.basename(__filename), () => {
-  beforeEach(done => rimraf('/run/impress', done))
+
+  let alice, bob
+
+  beforeEach(done => {
+    rimraf('/run/impress', done) 
+    alice = impress()
+    bob = impress()
+  })
+
+  afterEach(() => alice.close()) 
 
   it.only('GET /hello', done => {
-    const alice = impress()
-
-    alice.get('/hello', (msg, peer) => peer.respond(msg, 200, { data: 'world' }))
+    alice.get('/hello', (msg, peer) => 
+      peer.respond(msg, 200, { data: 'world' }))
 
     // 404 equivalent
     alice.use((msg, peer, next) => {
@@ -33,14 +41,13 @@ describe(path.basename(__filename), () => {
 
     alice.listen('/run/impress')
 
-    const bob = impress()
     const peer = bob.connect('/run/impress')
-    peer.get('/hello', (err, body) => {
-      expect(err).to.equal(null)
-      expect(body).to.deep.equal({ data: 'world' })
 
-      // TODO tear down
-      alice.close()
+    peer.get('/hello', (err, { data, chunk, readable }) => {
+      expect(err).to.equal(null)
+      expect(data).to.equal('world')
+      expect(chunk).to.be.undefined
+      expect(readable).to.be.undefined
       done()
     })
   })

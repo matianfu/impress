@@ -163,10 +163,11 @@ class Router extends Function {
    * The callback uses the same signature as middleware, the only difference
    * being that the value of the placeholder is passed, in this case the _id_
    * of the user. Once the `next()` function is invoked, just like middleware
-   * it will continue on to execute the route, or subsequent parameter functions.
+   * it will continue on to execute the route, or subsequent parameter 
+   * functions.
    *
-   * Just like in middleware, you must either respond to the request or call next
-   * to avoid stalling the request.
+   * Just like in middleware, you must either respond to the request or call 
+   * next to avoid stalling the request.
    *
    *  app.param('user_id', function(req, res, next, id){
    *    User.find(id, function(err, user){
