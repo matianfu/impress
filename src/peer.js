@@ -153,8 +153,7 @@ class Peer extends Duplex {
 
           if (hasData) {
             const len = msg.data
-            // OK with trailing LF
-            msg.data = JSON.parse(body.slice(0, len))
+            msg.data = JSON.parse(body.slice(0, len)) // trailing LF is OK
             body = body.slice(len + 1)
           }
 

@@ -124,26 +124,29 @@ class Request extends stream.Duplex {
   /**
    *
    */
-  handleResponse (msg) {
+  handleResponse ({ status, data, chunk }) {
     /** this is not a good status code, use flow control instead */
-    if (msg.status === 100) {
-
-    } else {
-      if (msg.status >= 200 && msg.status < 300) {
-        const { data, chunk, stream } = msg
-
-        console.log('msg', msg)
-
-        if (stream) {
-          this.sourcePath = stream.source
-        }
-
-        this.thenable.resolve({ data, chunk })
+    if (status >= 200 && status < 300) {
+      if (stream) {
+        this.sourcePath = stream.source
       }
+
+      this.thenable.resolve({ data, chunk })
+    } else if (status >= 400 && status < 600) {
+    } else {
+      // invalid status TODO
     }
   }
 
-  handleRaw (msg) {
+  /**
+   */
+  handleRaw ({ error, stream, data, chunk }) {
+    /**
+     * request stream
+     */
+    if (this._stream && stream.sink) {
+      this.sinkPath = stream.sink
+    }
   }
 
   handleConnectionLost () {
