@@ -58,20 +58,20 @@ class Peer extends Duplex {
 
     if (msg.body) throw new Error('deprecated message format')
 
-    const { to, from, method, status, error, pipe, data, blob } = msg 
+    const { to, from, method, status, error, stream, data, blob } = msg 
     const header = { to, from, method, status  }
 
     // error could be an Error, an object, a string TODO
     const hasError = !!error
-    // pipe must be an object 
-    const hasPipe = !!pipe
+    // stream must be an object 
+    const hasStream = !!stream
     // data could be anything 
     const hasData = data !== undefined
     // blob must be a Buffer
     const hasBlob = Buffer.isBuffer(blob)
 
     if (hasError) header.error = ErrorStringify(error).length
-    if (hasPipe) header.pipe = JSON.stringify(pipe).length 
+    if (hasStream) header.stream = JSON.stringify(stream).length 
     if (hasData) header.data = JSON.stringify(data).length
     if (hasBlob) header.blob = blob.length
 
@@ -83,8 +83,8 @@ class Peer extends Duplex {
       this.conn.write('\n')
     }
 
-    if (hasPipe) {
-      this.conn.write(JSON.stringify(pipe))
+    if (hasStream) {
+      this.conn.write(JSON.stringify(stream))
       this.conn.write('\n')
     }
 
@@ -118,7 +118,7 @@ class Peer extends Duplex {
         const msg = this.message
 
         const hasError = Number.isInteger(msg.error)
-        const hasPipe = Number.isInteger(msg.pipe)
+        const hasStream = Number.isInteger(msg.stream)
         const hasData = Number.isInteger(msg.data)
         const hasBlob = Number.isInteger(msg.blob)
 
@@ -126,7 +126,7 @@ class Peer extends Duplex {
         const buflen = this.bufs.reduce((sum, c) => sum + c.length, 0)
 
         const bodylen = (hasError ? msg.error + 1 : 0) +
-          (hasPipe ? msg.pipe + 1 : 0) +
+          (hasStream ? msg.stream + 1 : 0) +
           (hasData ? msg.data + 1 : 0) +
           (hasBlob ? msg.blob + 1 : 0)
 
@@ -143,9 +143,9 @@ class Peer extends Duplex {
             body = body.slice(len + 1)
           }
 
-          if (hasPipe) {
-            const len = msg.pipe
-            msg.pipe = JSON.parse(body.slice(0, len))
+          if (hasStream) {
+            const len = msg.stream
+            msg.stream = JSON.parse(body.slice(0, len))
             body = body.slice(len + 1)
           }
 
@@ -173,7 +173,7 @@ class Peer extends Duplex {
           const msg = JSON.parse(Buffer.concat([...this.bufs, data.slice(0, idx)]))
           this.bufs = []
           data = data.slice(idx + 1)
-          if (msg.error || msg.pipe || msg.data || msg.blob) {
+          if (msg.error || msg.stream || msg.data || msg.blob) {
             this.message = msg
           } else {
             this.handleMsg(msg)
@@ -192,10 +192,10 @@ class Peer extends Duplex {
     if (msg.hasOwnProperty('body')) throw new Error('old school message format')
 
     if (msg.method) {
-      if (msg.pipe) {
+      if (msg.stream) {
         const id = uuid.v4()
         const imsg = new IncomingMessage({ id,
-          path: Path.join(msg.to, '#pipes', this.id, id) }, msg)
+          path: Path.join(msg.to, '#streams', this.id, id) }, msg)
         this.push(imsg)
       } else {
         this.push(msg) 
@@ -212,7 +212,7 @@ class Peer extends Duplex {
 
     if (msg.method) {
       const id = uuid.v4()
-      const path = Path.join(msg.to, '#pipes', this.id, id)
+      const path = Path.join(msg.to, '#streams', this.id, id)
       const props = { id, path, send: this.write.bind(this), }
       const res = new ServerResponse(props, msg)
 
@@ -299,18 +299,14 @@ class Peer extends Duplex {
     const send = msg => this.write(msg)
 
     // TODO
-    const onTerminated = from => {
-    }
-
-    // TODO
     const onClose = (id, path) => {
     }
 
     // TODO
-    const { data, blob, pipe } = body
+    const { data, blob, stream } = body
 
     const req = new ClientRequest({ 
-      id, to, from, method, send, onTerminated, onClose, data, blob, pipe
+      id, to, from, method, send, onClose, data, blob, stream
     })
 
     this.handlers.set(req.from, req)
@@ -322,7 +318,7 @@ class Peer extends Duplex {
         }) 
         .catch(err => {
           try {
-            callback(err)
+            callback(err, {})
           } catch (e) {
             console.log(e)
           }

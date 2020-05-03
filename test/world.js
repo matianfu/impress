@@ -87,8 +87,10 @@ describe(path.basename(__filename), () => {
   it.only('GET /hello (downstream)', done => {
     alice.get('/hello', (req, res) => {
       res.write({ data: 'hello' })
-      res.write({ data: 'world' })
-      res.end()
+      setTimeout(() => { 
+        res.write({ data: 'world' })
+        res.end()
+      }, 500)
     })
 
     // 404 equivalent
@@ -99,20 +101,21 @@ describe(path.basename(__filename), () => {
     alice.listen('/run/impress')
 
     const peer = bob.connect('/run/impress')
-    peer.get('/hello', (err, { data, blob, readable }) => {
+    peer.get('/hello', (err, { data, blob, stream }) => {
       expect(err).to.equal(null)
       expect(data).to.be.undefined
       expect(blob).to.be.undefined
 
       const read = []
-      readable.on('data', data => read.push(data))
-      readable.on('close', () => {
+      stream.on('data', data => read.push(data))
+      stream.on('close', () => {
         expect(read).to.deep.equal([
           { data: 'hello' },
           { data: 'world' }
         ])
         done()
       })
+
     })    
   })
 

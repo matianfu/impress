@@ -22,7 +22,7 @@ class IncomingMessage extends stream.Readable {
     this.method = msg.method
     this.status = msg.status
     this.error = msg.error
-    this.pipe = msg.pipe
+    this.stream = msg.stream
     this.data = msg.data
     this.blob = msg.blob 
 
@@ -34,7 +34,7 @@ class IncomingMessage extends stream.Readable {
 
   resume () {
     if (!this.sinkReplied) {
-      this._send({ to: this.from, pipe: { sink: this.path } })
+      this._send({ to: this.from, stream: { sink: this.path } })
       this.sinkReplied = true
     }
     super.resume()

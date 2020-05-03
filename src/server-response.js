@@ -67,7 +67,7 @@ class Duplex extends Mixin(stream.Duplex) {
     super(props)
     this._send({ 
       to: this.to, 
-      pipe: { sink: this.from }
+      stream: { sink: this.from }
     })
   }
 }
@@ -78,7 +78,7 @@ class Writable extends Mixin(stream.Writable) {
     this._send({ 
       to: this.to, 
       status: 200,
-      pipe: { source: this.from }
+      stream: { source: this.from }
     })
   }
 }
@@ -103,9 +103,9 @@ class ServerResponse extends stream.Writable {
 
     this.to = msg.from
  
-    if (msg.pipe) {
+    if (msg.stream) {
       this.req = new IncomingMessage(props, msg)
-//      this._send({ to: this.to, pipe: { sink: this.path } })
+//      this._send({ to: this.to, stream: { sink: this.path } })
     } else {
       this.req = msg
     }
@@ -131,10 +131,10 @@ class ServerResponse extends stream.Writable {
     callback()
   }
 
-  stream (pipe = {}) {
+  stream (stream = {}) {
     if (!this.responded) {
-      pipe.source = this.path
-      this._send({ to: this.to, status: this.statusCode, pipe })
+      stream.source = this.path
+      this._send({ to: this.to, status: this.statusCode, stream })
       this.responded = true
     }
   }
