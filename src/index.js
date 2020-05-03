@@ -143,7 +143,9 @@ class Impress extends EventEmitter {
 
   addPeer (conn) {
     const peer = new Peer(this, conn)   
-    peer.on('data', msg => this.handle(msg, peer)) 
+    // peer.on('data', msg => this.handle(msg, peer)) 
+    peer.on('data', ({ req, res }) => this.handle(req, res)) 
+
     peer.on('error', error => this.handleError(err))
 
     peer.on('finish', () => console.log(peer.tag || peer.id, 'finished'))
@@ -163,7 +165,9 @@ class Impress extends EventEmitter {
    * listen on a port or socket, all incomming connections are added to peers
    */
   listen (...args) {
-    const listener = args.length && typeof args[args.length - 1] === 'function' && args.pop()
+    const listener = args.length && 
+      typeof args[args.length - 1] === 'function' && 
+      args.pop()
 
     this.server = net.createServer(conn => {
       const peer = this.addPeer(conn)
@@ -176,7 +180,8 @@ class Impress extends EventEmitter {
   }
 
   close () {
-    this.server.close()
+    // TODO
+    this.server && this.server.close()
   }
 
   /**

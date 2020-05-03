@@ -2,20 +2,20 @@ const { Writable, Duplex } = require('stream')
 
 /**
  *
- * | step | request              |    | response                | response state |
- * |------|----------------------|----|-------------------------|----------------|
- * | 1    | uri, method, [auth]  | -> |                         |                |
- * | 2    |                      | <- | 404 not found           |                |
- * |      |                      |    | 405 method not allowed  |                |
- * |      |                      |    | 401 unauthorized        |                |
- * |      |                      |    | 100 continue            | sink           |
- * | 3    | request data (close) | -> |                         |                |
- * |      |                      | <- | 400 bad request         |                |
- * |      |                      |    | 403 forbidden           |                |
- * |      |                      |    | 500 internal error      |                |
- * |      |                      |    | 503 unavailable         |                |
- * | 4    |                      | <- | 200 success             | source         |
- * | 5    | (close)              | <- | response data (close)   |                |
+ * | step | request              |    | response                | 
+ * |------|----------------------|----|-------------------------|
+ * | 1    | uri, method, [auth]  | -> |                         |               
+ * | 2    |                      | <- | 404 not found           |                
+ * |      |                      |    | 405 method not allowed  |                
+ * |      |                      |    | 401 unauthorized        |                
+ * |      |                      |    | 100 continue            | 
+ * | 3    | request data (close) | -> |                         | 
+ * |      |                      | <- | 400 bad request         | 
+ * |      |                      |    | 403 forbidden           | 
+ * |      |                      |    | 500 internal error      |
+ * |      |                      |    | 503 unavailable         |
+ * | 4    |                      | <- | 200 success             |
+ * | 5    | (close)              | <- | response data (close)   |
  *
  * sink state
  * 1) handle request data
@@ -55,7 +55,7 @@ class Response extends Duplex {
    * @param {string} props.to
    * @param {string} props.from
    * @param {function} props.send - send a message
-   * @param {function} props.streamTerminated - signal peer this stream is terminated
+   * @param {function} props.onClose - signal peer this stream is terminated
    */
   constructor (props) {
 
@@ -73,8 +73,8 @@ class Response extends Duplex {
      */
     super(props)
 
-    const { id, state, to, from, send, streamTerminated } = props 
-    Object.assign(this, { id, state, to, from, send, streamTerminated })
+    const { id, state, to, from, send, onClose } = props 
+    Object.assign(this, { id, state, to, from, send, onClose })
 
     /**
      * `Destroy()` is the only way putting stream into destroyed state. If
@@ -178,7 +178,7 @@ class Response extends Duplex {
         this.send({ to, from, status: statusCode, body })
       }
     }
-    this.streamTerminated(this.id)
+    this.onClose(this.id)
     if (callback) callback(err)
   }
 

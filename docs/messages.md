@@ -9,11 +9,13 @@
 
 | step | request             |    | response | message |
 |------|---------------------|----|----------|---------|
-| 1    | uri, method, [auth] | -> |          | A1,A2   |
+| 1    | uri, method, [auth] | -> |          | {}      |
 | 2    |                     | <- |404 not found<br/>405 method not allowed<br/>401 unauthorized<br/>100 continue |
-| 3    | request data stream, (close) | -> ||
-| 4    |			         | <- |400 bad request<br/>403 forbidden<br/>500 internal error<br/>503 unavailable<br/>200 success|
-| 5    |  (close)                   | <- | response data stream, (close) |
+| 3    |	request data stream, (close)| -><br/><- |400 bad request<br/>403 forbidden<br/>500 internal error<br/>503 unavailable<br/>|
+| 4    |                     | <- |200 success|
+| 5    |  (close)            | <- | response data stream, (close) |
+
+
 
 
 

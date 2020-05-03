@@ -1,9 +1,12 @@
-const path = require('path')
+const Path = require('path')
 const { Readable, Writable, Duplex } = require('stream')
 
 const uuid = require('uuid')
+const debug = require('debug')('impress:peer')
 
-const Request = require('./request')
+const IncomingMessage = require('./incoming-message')
+const ServerResponse = require('./server-response')
+const ClientRequest = require('./client-request')
 
 const ErrorStringify = error => error === null 
   ? JSON.stringify(error)
@@ -24,11 +27,6 @@ class Peer extends Duplex {
 
     this.im = im
     this.conn = conn
-
-    /**
-     * id (uuid) => { id, msg, callback || Readable } 
-     */
-    this.requests = new Map()
 
     /**
      * path => Request or Response
@@ -60,22 +58,22 @@ class Peer extends Duplex {
 
     if (msg.body) throw new Error('deprecated message format')
 
-    const { to, from, method, status, error, stream, data, chunk } = msg 
+    const { to, from, method, status, error, pipe, data, blob } = msg 
     const header = { to, from, method, status  }
 
     // error could be an Error, an object, a string TODO
     const hasError = !!error
-    // stream must be an object 
-    const hasStream = !!stream
+    // pipe must be an object 
+    const hasPipe = !!pipe
     // data could be anything 
     const hasData = data !== undefined
-    // chunk must be a Buffer
-    const hasChunk = Buffer.isBuffer(chunk)
+    // blob must be a Buffer
+    const hasBlob = Buffer.isBuffer(blob)
 
     if (hasError) header.error = ErrorStringify(error).length
-    if (hasStream) header.stream = JSON.stringify(stream).length 
+    if (hasPipe) header.pipe = JSON.stringify(pipe).length 
     if (hasData) header.data = JSON.stringify(data).length
-    if (hasChunk) header.chunk = chunk.length
+    if (hasBlob) header.blob = blob.length
 
     this.conn.write(JSON.stringify(header))
     this.conn.write('\n')
@@ -85,8 +83,8 @@ class Peer extends Duplex {
       this.conn.write('\n')
     }
 
-    if (hasStream) {
-      this.conn.write(JSON.stringify(stream))
+    if (hasPipe) {
+      this.conn.write(JSON.stringify(pipe))
       this.conn.write('\n')
     }
 
@@ -95,8 +93,8 @@ class Peer extends Duplex {
       this.conn.write('\n')
     }
 
-    if (hasChunk) {
-      this.conn.write(chunk)
+    if (hasBlob) {
+      this.conn.write(blob)
       this.conn.write('\n')
     }
 
@@ -116,21 +114,21 @@ class Peer extends Duplex {
   receive (data) {
     while (data.length) {
       if (this.message) { 
-        // expecting data or chunk
+        // expecting data or blob
         const msg = this.message
 
         const hasError = Number.isInteger(msg.error)
-        const hasStream = Number.isInteger(msg.stream)
+        const hasPipe = Number.isInteger(msg.pipe)
         const hasData = Number.isInteger(msg.data)
-        const hasChunk = Number.isInteger(msg.chunk)
+        const hasBlob = Number.isInteger(msg.blob)
 
         // buffer length
         const buflen = this.bufs.reduce((sum, c) => sum + c.length, 0)
 
         const bodylen = (hasError ? msg.error + 1 : 0) +
-          (hasStream ? msg.stream + 1 : 0) +
+          (hasPipe ? msg.pipe + 1 : 0) +
           (hasData ? msg.data + 1 : 0) +
-          (hasChunk ? msg.chunk + 1 : 0)
+          (hasBlob ? msg.blob + 1 : 0)
 
         if (buflen + data.length >= bodylen) {
           this.message = null
@@ -145,9 +143,9 @@ class Peer extends Duplex {
             body = body.slice(len + 1)
           }
 
-          if (hasStream) {
-            const len = msg.stream
-            msg.stream = JSON.parse(body.slice(0, len))
+          if (hasPipe) {
+            const len = msg.pipe
+            msg.pipe = JSON.parse(body.slice(0, len))
             body = body.slice(len + 1)
           }
 
@@ -157,8 +155,8 @@ class Peer extends Duplex {
             body = body.slice(len + 1)
           }
 
-          if (hasChunk) {
-            msg.chunk = body.slice(0, msg.chunk)
+          if (hasBlob) {
+            msg.blob = body.slice(0, msg.blob)
           }
           this.handleMsg(msg)
         } else {
@@ -175,7 +173,7 @@ class Peer extends Duplex {
           const msg = JSON.parse(Buffer.concat([...this.bufs, data.slice(0, idx)]))
           this.bufs = []
           data = data.slice(idx + 1)
-          if (msg.error || msg.stream || msg.data || msg.chunk) {
+          if (msg.error || msg.pipe || msg.data || msg.blob) {
             this.message = msg
           } else {
             this.handleMsg(msg)
@@ -189,11 +187,19 @@ class Peer extends Duplex {
    *
    */
   handleMsg (msg) {
+    debug(msg)
 
     if (msg.hasOwnProperty('body')) throw new Error('old school message format')
 
     if (msg.method) {
-      this.push(msg) 
+      if (msg.pipe) {
+        const id = uuid.v4()
+        const imsg = new IncomingMessage({ id,
+          path: Path.join(msg.to, '#pipes', this.id, id) }, msg)
+        this.push(imsg)
+      } else {
+        this.push(msg) 
+      }
     } else if (msg.status) {
       this.handleResponse(msg)
     } else {
@@ -201,31 +207,36 @@ class Peer extends Duplex {
     }
   }
 
-  /**
-   *
-   */
-  handleResponse (msg) {
-    const handler = this.handlers.get(msg.to)
-    if (!handler) return
-    handler.handleResponse(msg)
-  }
+  handleMsg (msg) {
+    debug(msg)
 
-  /**
-   *
-   */
-  handleRaw (msg) {
-    const handler = this.handlers.get(msg.to)
-    if (!handler) return
-    handler.handleRaw(msg)
+    if (msg.method) {
+      const id = uuid.v4()
+      const path = Path.join(msg.to, '#pipes', this.id, id)
+      const props = { id, path, send: this.write.bind(this), }
+      const res = new ServerResponse(props, msg)
+
+      this.handlers.set(res.path, res)
+
+      res.on('close', () => this.handlers.delete(path))
+      this.push({ req: res.req, res }) 
+    } else {
+      const res = this.handlers.get(msg.to)
+      if (res) {
+        res.handleMessage(msg)
+      } else {
+        console.log('res not found')
+      }
+    }
   }
 
   /**
    * TODO rethink this function
    */
   respond (msg, status, body) {
-    if (typeof msg.from !== 'string' || msg.noreply) return
-    const { error, data, chunk } = body
-    this.write({ to: msg.from, status, error, data, chunk })
+    if (typeof msg.from !== 'string') return
+    const { error, data, blob } = body
+    this.write({ to: msg.from, status, error, data, blob })
   }
 
   /**
@@ -257,11 +268,11 @@ class Peer extends Duplex {
       throw new TypeError('request path not a string')
     }
 
-    if (path.normalize(to) !== to) {
+    if (Path.normalize(to) !== to) {
       throw new Error('request path not normalized')
     }
 
-    if (!path.isAbsolute(to)) {
+    if (!Path.isAbsolute(to)) {
       throw new Error('request path not an absolute one')
     }
 
@@ -283,7 +294,7 @@ class Peer extends Duplex {
     }
 
     const id = uuid.v4()
-    const from = path.join('/#requests/', this.id, id) 
+    const from = Path.join('/#requests/', this.id, id) 
 
     const send = msg => this.write(msg)
 
@@ -292,10 +303,14 @@ class Peer extends Duplex {
     }
 
     // TODO
-    const { data, chunk, stream } = body
+    const onClose = (id, path) => {
+    }
 
-    const req = new Request({ 
-      id, to, from, method, send, onTerminated, data, chunk, stream
+    // TODO
+    const { data, blob, pipe } = body
+
+    const req = new ClientRequest({ 
+      id, to, from, method, send, onTerminated, onClose, data, blob, pipe
     })
 
     this.handlers.set(req.from, req)
@@ -318,28 +333,28 @@ class Peer extends Duplex {
   }
 
   /**
-   * the callback signature is (err, response, body) => {} 
+   * the callback signature is (err, msg) => {} where 
+   * msg is { data, blob, readable } 
    */
   get (to, body, callback) {
-    this.request('GET', to, body, callback)
+    return this.request('GET', to, body, callback)
   }
 
   post (to, body, callback) {
-    this.request(to, 'POST', body, callback)
+    return this.request('POST', to, body, callback)
   }
 
   put (to, body, callback) {
-    this.request(to, 'PUT', body, callback)
+    return this.request('PUT', to, body, callback)
   }
 
   patch (to, body, callback) {
-    this.request(to, 'PATCH', body, callback)
+    return this.request('PATCH', to, body, callback)
   }
 
   delete (to, body, callback) {
-    this.request(to, 'DELETE', body, callback)
+    return this.request('DELETE', to, body, callback)
   }
-
 }
 
 module.exports = Peer

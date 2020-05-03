@@ -2,14 +2,14 @@ const path = require('path')
 const fs = require('fs')
 const net = require('net')
 const stream = require('stream')
-const { Readable, Writable } = stream
+const { Readable, Writable, Duplex } = stream
 
 const uuid = require('uuid')
 const mkdirp = require('mkdirp')
 const rimraf = require('rimraf')
 const expect = require('chai').expect
 
-// const Response = require('src/response')
+const ServerResponse = require('src/server-response')
 const impress = require('src/index') 
 
 describe(path.basename(__filename), () => {
@@ -24,159 +24,200 @@ describe(path.basename(__filename), () => {
 
   afterEach(() => alice.close()) 
 
-  it.only('GET /hello', done => {
-    alice.get('/hello', (msg, peer) => 
-      peer.respond(msg, 200, { data: 'world' }))
+  /**
+   * bob: { 
+   *   to: '/hello', 
+   *   from: '/#requests/...', 
+   *   method: 'GET'
+   * }
+   * alice: { 
+   *   to: '/#requests/...', 
+   *   status: 200, 
+   *   data: 'world' 
+   * }
+   */
+  it('GET /hello', done => {
+    alice.get('/hello', (req, res) => res.status(200).send({ data: 'world'}))
 
     // 404 equivalent
-    alice.use((msg, peer, next) => {
-      const err = new Error('no handler')
-      next(err)
-    })
-
+    alice.use((msg, peer, next) => next(new Error('no handler')))
     // 500 equivalent
-    alice.use((err, msg, peer, next) => {
-      console.log(err)
-    })
+    alice.use((err, msg, peer, next) => console.log(err))
 
     alice.listen('/run/impress')
 
     const peer = bob.connect('/run/impress')
-
-    peer.get('/hello', (err, { data, chunk, readable }) => {
+    peer.get('/hello', (err, { data, blob, readable }) => {
       expect(err).to.equal(null)
       expect(data).to.equal('world')
-      expect(chunk).to.be.undefined
+      expect(blob).to.be.undefined
       expect(readable).to.be.undefined
       done()
     })
   })
 
   /**
-   * 
+   * bob: { 
+   *   to: '/hello', 
+   *   from: '/#requests/alice/4321', 
+   *   method: 'GET' 
+   * }
+   * alice: { 
+   *   to: '/#requests/alice/4321', 
+   *   status: 200, 
+   *   pipe: { 
+   *     source: '/hello/#pipes/bob/1234' // source path
+   *   } 
+   * }
+   * alice: {
+   *   to: '/#requests/...',
+   *   from: '/hello/#pipes/bob/1234', // optional
+   *   data: 'hello'
+   * }
+   * alice: {
+   *   to: '/#requests/...',
+   *   from: '/hello/#pipes/bob/1234', // optional
+   *   data: 'world'
+   * }
+   * alice: { 
+   *   to: '/#requests/...',
+   *   from: '/hello/#pipes/bob/1234', // optional
+   * }
    */
-  it('GET /hello stream', done => {
-    const alice = impress()
-    alice.get('/hello', (msg, peer) => {
-      const id = uuid.v4()
-      const source = `/hello/#sources/${peer.id}/${id}`
-      peer.respond(msg, 200, { meta: { source } })
-      peer.write({ to: msg.from, body: { data: 'hello' } })
-      peer.write({ to: msg.from, body: { data: 'world' } })
-      peer.write({ to: msg.from, body: {} })
+  it.only('GET /hello (downstream)', done => {
+    alice.get('/hello', (req, res) => {
+      res.write({ data: 'hello' })
+      res.write({ data: 'world' })
+      res.end()
     })
-
-    alice.push('/hello/#sources/:peerId/:id', (msg, peer) => {
-      // peer.push(
-    })
-
-/**
-    alice.get('/hello', (msg, peer) => {
-      const id = uuid.v4()
-      const from = `/hello/#sources/${peer.id}/${id}`
-      const source = new Response({ 
-        id, 
-        type: 'source', 
-        to: msg.from, from, 
-        send: (...args) => peer.write(...args),
-        streamTerminated: (id) => {
-          peer.responses.delete(id)
-        }
-      }) 
-      peer.responses.set(id, source)
-      
-      source.write({ data: 'hello' })
-      source.end({ data: 'world' })
-      // peer.write({ to: msg.from, body: { data: 'world', error: null } })
-    })
-*/
 
     // 404 equivalent
-    alice.use((msg, peer, next) => {
-      console.log('404 no handler, msg', msg)
-      const err = new Error('no handler')
-      next(err)
-    })
-
+    alice.use((msg, peer, next) => next(new Error('no handler')))
     // 500 equivalent
-    alice.use((err, msg, peer, next) => {
-      console.log('500 internal error', err, msg)
-    })
+    alice.use((err, msg, peer, next) => console.log(err))
 
     alice.listen('/run/impress')
 
-    const bob = impress()
-    const peer = bob.connect('/run/impress') 
-
-    peer.get('/hello', (err, rs) => {
+    const peer = bob.connect('/run/impress')
+    peer.get('/hello', (err, { data, blob, readable }) => {
       expect(err).to.equal(null)
-      expect(rs instanceof Readable).to.equal(true)
-      const buf = []
-      rs.on('data', data => buf.push(data))
-      rs.on('end', () => {
-        expect(buf).to.deep.equal([
+      expect(data).to.be.undefined
+      expect(blob).to.be.undefined
+
+      const read = []
+      readable.on('data', data => read.push(data))
+      readable.on('close', () => {
+        expect(read).to.deep.equal([
           { data: 'hello' },
           { data: 'world' }
         ])
         done()
       })
-    })
+    })    
   })
 
   /**
-   * /hello create a sink and respond with path
-   *
-   * sink {
-   *   id, method, a readable stream
+   * bob: {
+   *   to: '/hello',
+   *   from: '/#requests/alice/123',
+   *   method: 'GET',
+   *   pipe: {}
+   * }
+   * alice: {
+   *   to: '/#requests/alice/123',
+   *   pipe: {
+   *     sink: '/hello/#pipes/bob/456'
+   *   }
+   * }
+   * bob: {
+   *   to: '/hello/#pipes/bob/456',
+   *   data: 'hello'
+   * }
+   * bob: {
+   *   to: '/hello/#pipes/bob/456',
+   *   data: 'world'
+   * }
+   * bob: {
+   *   to: '/hello/#pipes/bob/456
+   * }
+   * alice: {
+   *   status: 200,
+   *   data: 'foobar'
    * }
    */
+  it('GET /hello (upstream)', done => {
+    alice.get('/hello', (req, res) => {
+      const collection = []
+      req.on('data', data => collection.push(data))
+      req.on('end', () => res.send({ data: 'foobar' }))
+    })
 
-  it('POST /hello stream', done => {
-    const alice = impress()
-    alice.posts('/hello', (msg, peer) => {
-      const id = uuid.v4()
-      const path = `/hello/#sinks/${peer.id}/${id}`
-      const readable = new Readable({ objectMode: true, read () {} })
-      const sink = { id, readable }
-      peer.sinks.set(id, sink)
-      peer.respond(msg, 201, { data: path })
-    })
-    .push('/hello/#sinks/:peerId/:id', (msg, peer) => {
-      const { peerId, id } = msg.params 
-      const sink = peer.sinks.get(id)
-      if (sink && sink.readable && msg.body) {
-        sink.readable.push(msg.body)
-      }
-    })
-    .delete('/hello/#sinks/:peerId/:id', (msg, peer) => {
-      const { peerId, id } = msg.params
-      const sink = peer.sinks.get(id)
-      if (sink) {
-        peer.sinks.delete(id)
-        sink.readable.push(null)
-      }
-
-      const readable = sink.readable
-      const buf = []
-      readable.on('data', data => buf.push(data))
-      readable.on('end', () => {
-        peer.respond(msg, 200, {})
-      })
-    })
+    // 404 equivalent
+    alice.use((msg, peer, next) => next(new Error('no handler')))
+    // 500 equivalent
+    alice.use((err, msg, peer, next) => console.log(err))
 
     alice.listen('/run/impress')
 
-    const bob = impress()
     const peer = bob.connect('/run/impress')
+    const req = peer.get('/hello', { pipe: {} })
 
-    peer.tag = 'bob'
+    req
+      .then(res => {
+        expect(res).to.deep.equal({ data: 'foobar' })
+        done()
+      })
+      .catch(e => done(e))
 
-    const ws = peer.posts('/hello')
-    ws.write({ data: 'hello' })
-    ws.write({ data: 'world' })
-    ws.end((err, body) => {
-      expect(err).to.equal(null)
-      done()
+    req.write({ data: 'hello' })
+    req.write({ data: 'world' })
+    req.end()
+  })
+
+  /**
+   * this is a fictionary test
+   */
+  it('GET /hello (upstream & downstream)', done => {
+
+    alice.get('/hello', (req, res) => {
+      const collection = []
+      req.on('data', data => collection.push(data))
+      req.on('end', () => {
+        res.write({ data: 'foo' })
+        res.write({ data: 'bar' })
+        res.end()
+      })
     })
+
+    // 404 equivalent
+    alice.use((msg, peer, next) => next(new Error('no handler')))
+    // 500 equivalent
+    alice.use((err, msg, peer, next) => console.log(err))
+
+    alice.listen('/run/impress')
+
+    const peer = bob.connect('/run/impress')
+    const req = peer.get('/hello', { pipe: {} })
+
+    req
+      .then(({ data, blob, readable }) => {
+        expect(data).to.be.undefined
+        expect(blob).to.be.undefined
+
+        const collection = []
+        readable.on('data', data => collection.push(data))
+        readable.on('end', () => {
+          expect(collection).to.deep.equal([
+            { data: 'foo' },
+            { data: 'bar' }
+          ])
+          done()
+        })
+      })
+      .catch(e => done(e))
+
+    req.write({ data: 'hello' })
+    req.write({ data: 'world' })
+    req.end()
   })
 })
