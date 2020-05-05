@@ -84,7 +84,7 @@ describe(path.basename(__filename), () => {
    *   from: '/hello/#pipes/bob/1234', // optional
    * }
    */
-  it.only('GET /hello (downstream)', done => {
+  it('GET /hello (downstream)', done => {
     alice.get('/hello', (req, res) => {
       res.write({ data: 'hello' })
       setTimeout(() => { 
@@ -101,7 +101,7 @@ describe(path.basename(__filename), () => {
     alice.listen('/run/impress')
 
     const peer = bob.connect('/run/impress')
-    peer.get('/hello', (err, { data, blob, stream }) => {
+    const req = peer.get('/hello', (err, { data, blob, stream }) => {
       expect(err).to.equal(null)
       expect(data).to.be.undefined
       expect(blob).to.be.undefined
@@ -115,7 +115,6 @@ describe(path.basename(__filename), () => {
         ])
         done()
       })
-
     })    
   })
 
@@ -163,14 +162,11 @@ describe(path.basename(__filename), () => {
     alice.listen('/run/impress')
 
     const peer = bob.connect('/run/impress')
-    const req = peer.get('/hello', { pipe: {} })
-
-    req
-      .then(res => {
-        expect(res).to.deep.equal({ data: 'foobar' })
-        done()
-      })
-      .catch(e => done(e))
+    const req = peer.get('/hello', { stream: {} }, (err, { data }) => {
+      expect(err).to.equal(null)
+      expect(data).to.equal('foobar')
+      done()
+    })
 
     req.write({ data: 'hello' })
     req.write({ data: 'world' })
@@ -178,7 +174,7 @@ describe(path.basename(__filename), () => {
   })
 
   /**
-   * this is a fictionary test
+   * this is a fictionl test
    */
   it('GET /hello (upstream & downstream)', done => {
 
@@ -200,16 +196,16 @@ describe(path.basename(__filename), () => {
     alice.listen('/run/impress')
 
     const peer = bob.connect('/run/impress')
-    const req = peer.get('/hello', { pipe: {} })
-
-    req
-      .then(({ data, blob, readable }) => {
+    const req = peer.get('/hello', { stream: {} }, 
+      (err, { data, blob, stream }) => {
+        if (err) return done(err)
         expect(data).to.be.undefined
         expect(blob).to.be.undefined
 
         const collection = []
-        readable.on('data', data => collection.push(data))
-        readable.on('end', () => {
+
+        stream.on('data', data => collection.push(data))
+        stream.on('end', () => {
           expect(collection).to.deep.equal([
             { data: 'foo' },
             { data: 'bar' }
@@ -217,7 +213,6 @@ describe(path.basename(__filename), () => {
           done()
         })
       })
-      .catch(e => done(e))
 
     req.write({ data: 'hello' })
     req.write({ data: 'world' })

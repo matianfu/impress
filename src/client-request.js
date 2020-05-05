@@ -8,17 +8,17 @@ const { Readable, Writable } = require('stream')
  */
 
 /**
- * 
- * | step | client-request       |    | server-response         | 
+ *
+ * | step | client-request       |    | server-response         |
  * |------|----------------------|----|-------------------------|
- * | 1    | uri, method, [auth]  | -> |                         |               
- * | 2    |                      | <- | 404 not found           |                
- * |      |                      |    | 405 method not allowed  |                
- * |      |                      |    | 401 unauthorized        |                
- * |      |                      |    | 100 continue            | 
- * | 3    | request data (close) | -> | (incoming-message)      | 
- * |      |                      | <- | 400 bad request         | 
- * |      |                      |    | 403 forbidden           | 
+ * | 1    | uri, method, [auth]  | -> |                         |
+ * | 2    |                      | <- | 404 not found           |
+ * |      |                      |    | 405 method not allowed  |
+ * |      |                      |    | 401 unauthorized        |
+ * |      |                      |    | 100 continue            |
+ * | 3    | request data (close) | -> | (incoming-message)      |
+ * |      |                      | <- | 400 bad request         |
+ * |      |                      |    | 403 forbidden           |
  * |      |                      |    | 500 internal error      |
  * |      |                      |    | 503 unavailable         |
  * | 4    |                      | <- | 200 success             |
@@ -53,10 +53,8 @@ const Mixin = base => class extends base {
     this.from = props.from
     this.path = props.path
 
-    /** for upload data */
     this.sink = undefined
-   
- 
+
     this.method = props.method
 
     this.response = null
@@ -74,15 +72,10 @@ const Mixin = base => class extends base {
 
       this.once('response', listenResponse)
       this.once('error', listenError)
-
-      // this.thenable = { resolve, reject }
     })
 
     this.once('error', err => this.destroy(err))
-
     this.once('close', () => this._onClose(this.id, this.from))
-
-    this.state = 'INIT'
   }
 
   /**
@@ -90,7 +83,7 @@ const Mixin = base => class extends base {
    */
   _final (callback) {
     if (this._stream) {
-//      this._send({ to: this.sink, from 
+      //      this._send({ to: this.sink, from
       callback()
     } else {
       callback()
@@ -109,97 +102,10 @@ const Mixin = base => class extends base {
   }
 
   /**
-   * stream.Readable's internal _read method
-   */
-  _read (size) {
-  }
-
-  handleMessage (msg) {
-
-    console.log('....')
-
-    if (msg.status) {
-      this.handleResponse(msg)
-    } else { 
-      this.handleRaw(msg)
-    }
-  }
-
-  /**
-   *
-   */
-  handleResponse ({ status, data, blob, stream }) {
-
-    console.log('client-request writable handle response')
-
-    if (status >= 200 && status < 300) {
-      if (stream) {
-        if (stream.source) {
-          this.source = stream.source
-        }
-
-        if (data !== undefined || blob) {
-          const msg = {}
-          if (data !== undefined) msg.data = data
-          if (blob) msg.blob = blob
-          this.thenable.resolve(msg)
-        } else {
-          this.thenable.resolve({ readable: this })
-        }
-      } else {
-        if (data !== undefined || blob) {
-          const msg = {}
-          if (data !== undefined) msg.data = data
-          if (blob) msg.blob = blob
-          this.thenable.resolve(msg)
-        } else {
-          this.thenable.resolve({ readable: this })
-        }
-      }
-    } else if (status >= 400 && status < 600) {
-    } else {
-      // invalid status TODO
-    }
-  }
-
-  /**
-   *
-   */
-  handleRaw ({ error, stream, data, blob }) {
-
-    console.log('client-request writable handle response')
-    // 
-    if (stream && stream.sink) {
-      this.sink = stream.sink
-      if (this.pendingWrite) {
-        const { chunk, encoding, callback } = this.pendingWrite
-        delete this.pendingWrite
-        const { data, blob } = chunk
-        this._send({ to: this.sink, from: this.from, data, blob})
-        callback()
-      }
-      return
-    }
-
-    if (stream && stream.source) {
-      throw new Error('stream.source should be set via response message')
-    }
-
-    if (data !== undefined || blob) {
-      const msg = {}
-      if (data !== undefined) msg.data = data
-      if (blob) msg.blob = blob
-      this.push(msg)
-    } else {
-      this.push(null)
-    }
-  }
-
-  /**
    *
    */
   handleConnectionLost () {
-    
+
   }
 
   /**
@@ -222,8 +128,12 @@ class StreamRequest extends Mixin(Writable) {
       to: this.to,
       from: this.from,
       method: this.method,
-      data, blob, stream
+      data,
+      blob,
+      stream
     })
+    this.sink = undefined
+    this.state = 'HANDSHAKE'
   }
 
   /**
@@ -232,8 +142,8 @@ class StreamRequest extends Mixin(Writable) {
   _write (chunk, encoding, callback) {
     if (this.sink) {
       const { data, blob } = chunk
-      this._send({ 
-        to: this.sink, 
+      this._send({
+        to: this.sink,
         from: this.from,
         data,
         blob
@@ -246,33 +156,103 @@ class StreamRequest extends Mixin(Writable) {
 
   _final (callback) {
     if (this.sink) {
-      this._send({ 
-        to: this.sink
-      })
-      callback() 
+      this._send({ to: this.sink })
+      this.state = 'REQUESTED'
+      callback()
+    } else {
+      this.pendingEnd = { callback } 
     }
-    // TODO
-  } 
+  }
+
+  /**
+   *
+   * | state         | sink       | 4xx/5xx | 2xx       |
+   * |---------------|------------|---------|-----------|
+   * | HANDSHAKE     | REQUESTING | ERROR   | ERROR     |
+   * | REQUESTING    | ERROR      | ERROR   | ERROR     |
+   * | REQUESTED     | ERROR      | ERROR   | RESPONDED |
+   *
+   * HANDSHAKE - first message sent, expecting a stream.sink
+   * REQUESTING - writing stream data, expecting nothing
+   * REQUESTED - stream is ended, expecting a response with status code
+   * ERROR - final state with error
+   * RESPONDED -  success, may be but not necessarily a final state
+   */
+  handleMessage ({ status, error, stream: opts, data, blob }) {
+    switch (this.state) {
+      case 'HANDSHAKE': {
+        if (opts.sink) {
+          this.sink = opts.sink
+          this.state = 'REQUESTING'
+          if (this.pendingWrite) {
+            const { chunk, encoding, callback } = this.pendingWrite
+            delete this.pendingWrite
+            const { data, blob } = chunk
+            this._send({ to: this.sink, from: this.path, data, blob })
+            callback()
+          } else if (this.pendingEnd) {
+          }
+        }
+      } break
+      case 'REQUESTED': {
+        if (status === 200) {
+          if (opts) {
+            this.source = opts.source
+
+            const stream = new Readable({
+              objectMode: true,
+              autoDestroy: true,
+              read () {}
+            })
+            stream.opts = opts
+            this.response = { data, blob, stream }
+          } else {
+            this.response = { data, blob }
+          }
+
+          this.state = 'RESPONDED'
+          this.emit('response', this.response)
+        }
+      } break
+      case 'RESPONDED': {
+        if (this.source) {
+          if (data !== undefined || blob) {
+            const msg = {}
+            if (data !== undefined) msg.data = data
+            if (blob) msg.blob = blob
+            this.response.stream.push(msg) 
+          } else {
+            this.response.stream.push(null) 
+          }
+        }
+      } break
+      default: {
+      }
+    }
+  }
 }
 
 class SimpleRequest extends Mixin(EventEmitter) {
-  constructor(props) {
+  constructor (props) {
     super(props)
     const { to, from, path, method, data, blob } = props
     this._send({
       to: this.to,
       from: this.from,
       path: this.path,
-      method, data, blob
+      method,
+      data,
+      blob
     })
+
+    this.state = 'REQUESTED'
   }
 
   handleMessage ({ status, error, stream, data, blob }) {
-    
-    if (this.state === 'INIT') {
+    if (this.state === 'REQUESTED') {
       // TODO error if status not set or invalid
-     
-      const res = {} 
+
+      const res = {}
       if (status >= 200 && status < 300) {
         if (stream) {
           res.stream = Object.assign(new Readable({
@@ -281,26 +261,23 @@ class SimpleRequest extends Mixin(EventEmitter) {
             read (size) {}
           }), stream)
         } else {
-          if (data !== undefined) res.data = data 
+          if (data !== undefined) res.data = data
           if (blob) res.blob = blob
         }
       } else {
-        // TODO accept string 
-        if (error) res.error = error 
-      } 
+        // TODO accept string
+        if (error) res.error = error
+      }
 
       this.response = res
       this.state = 'RESPONDED'
       this.emit('response', res)
     } else {
-      
       // no more response
 
       const msg = {}
       if (data !== undefined) msg.data = data
       if (blob) msg.blob = blob
-
-      console.log(Object.keys(msg))
 
       if (Object.keys(msg).length) {
         this.response.stream.push(msg)
