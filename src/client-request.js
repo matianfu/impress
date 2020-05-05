@@ -2,12 +2,6 @@ const EventEmitter = require('events')
 const { Readable, Writable } = require('stream')
 
 /**
- * INIT (first message sent)
- * writable -> expecting error response or message with stream.sink
- * emitter -> expecting error or success response
- */
-
-/**
  *
  * | step | client-request       |    | server-response         |
  * |------|----------------------|----|-------------------------|
@@ -29,13 +23,13 @@ const { Readable, Writable } = require('stream')
  *
  * Request is HEAVY for non-stream request/response round-trip.
  */
-const Mixin = base => class extends base {
+const Mixin = Base => class extends Base {
   /**
    * @param {object}          props
    * @param {function}        props.send
    * @param {function}        props.onTerminated
    * @param {string}          props.id
-   * @param {string}          props.from
+   * @param {string}          props.path
    * @param {string}          props.method
    * @param {string}          [props.accept] -
    * @param {*}               [props.data] - any js value except undefined
@@ -79,29 +73,6 @@ const Mixin = base => class extends base {
   }
 
   /**
-   * stream.Writable's internal _final method
-   */
-  _final (callback) {
-    if (this._stream) {
-      //      this._send({ to: this.sink, from
-      callback()
-    } else {
-      callback()
-    }
-  }
-
-  /**
-   *
-   */
-  _destroy (err, callback) {
-    if (this._stream) {
-      callback()
-    } else {
-      callback()
-    }
-  }
-
-  /**
    *
    */
   handleConnectionLost () {
@@ -126,7 +97,7 @@ class StreamRequest extends Mixin(Writable) {
     this.stream = stream
     this._send({
       to: this.to,
-      from: this.from,
+      from: this.path,
       method: this.method,
       data,
       chunk,
@@ -161,6 +132,17 @@ class StreamRequest extends Mixin(Writable) {
       callback()
     } else {
       this.pendingEnd = { callback } 
+    }
+  }
+
+  /**
+   *
+   */
+  _destroy (err, callback) {
+    if (this._stream) {
+      callback()
+    } else {
+      callback()
     }
   }
 
@@ -232,19 +214,14 @@ class StreamRequest extends Mixin(Writable) {
   }
 }
 
+/**
+ *
+ */
 class SimpleRequest extends Mixin(EventEmitter) {
   constructor (props) {
     super(props)
-    const { to, from, path, method, data, chunk } = props
-    this._send({
-      to: this.to,
-      from: this.from,
-      path: this.path,
-      method,
-      data,
-      chunk
-    })
-
+    const { to, path, method, data, chunk } = props
+    this._send({ to, from: path, method, data, chunk })
     this.state = 'REQUESTED'
   }
 
@@ -273,8 +250,6 @@ class SimpleRequest extends Mixin(EventEmitter) {
       this.state = 'RESPONDED'
       this.emit('response', res)
     } else {
-      // no more response
-
       const msg = {}
       if (data !== undefined) msg.data = data
       if (chunk) msg.chunk = chunk
@@ -289,26 +264,21 @@ class SimpleRequest extends Mixin(EventEmitter) {
 }
 
 /**
- *
+ * @param {object}          props
+ * @param {function}        props.send
+ * @param {function}        [props.onClose]
+ * @param {string}          props.id
+ * @param {string}          props.path
+ * @param {string}          props.method
+ * @param {*}               [props.data] - any js value except undefined
+ * @param {buffer}          [props.chunk] - node buffer
+ * @param {object}          [props.stream] - stream opts
  */
-class ClientRequest {
-  /**
-   * @param {object}          props
-   * @param {function}        props.send
-   * @param {function}        [props.onClose]
-   * @param {string}          props.id
-   * @param {string}          props.path
-   * @param {string}          props.method
-   * @param {*}               [props.data] - any js value except undefined
-   * @param {buffer}          [props.chunk] - node buffer
-   * @param {object}          [props.stream] - stream opts
-   */
-  constructor (props) {
-    if (props.stream) {
-      return new StreamRequest(props)
-    } else {
-      return new SimpleRequest(props)
-    }
+const ClientRequest = props => {
+  if (props.stream) {
+    return new StreamRequest(props)
+  } else {
+    return new SimpleRequest(props)
   }
 }
 

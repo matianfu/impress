@@ -177,7 +177,6 @@ describe(path.basename(__filename), () => {
    * this is a fictionl test
    */
   it('GET /hello (upstream & downstream)', done => {
-
     alice.get('/hello', (req, res) => {
       const collection = []
       req.on('data', data => collection.push(data))

@@ -295,6 +295,7 @@ class Peer extends Duplex {
 
     const id = uuid.v4()
     const from = Path.join('/#requests/', this.id, id) 
+    const path = from
 
     const send = msg => this.write(msg)
 
@@ -305,11 +306,11 @@ class Peer extends Duplex {
     // TODO
     const { data, chunk, stream } = body
 
-    const req = new ClientRequest({ 
-      id, to, from, method, send, onClose, data, chunk, stream
+    const req = ClientRequest({ 
+      id, to, path, method, send, onClose, data, chunk, stream
     })
 
-    this.handlers.set(req.from, req)
+    this.handlers.set(req.path, req)
 
     if (callback) {
       req
