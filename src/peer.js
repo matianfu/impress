@@ -12,6 +12,9 @@ const ErrorStringify = error => error === null
   ? JSON.stringify(error)
   : JSON.stringify(error, Object.getOwnPropertyNames(error).slice(1))
 
+/**
+ *
+ */
 class Peer extends Duplex {
   constructor (im, conn) {
     super({ 
@@ -55,10 +58,7 @@ class Peer extends Duplex {
    * Encode message to wire format
    */
   _write (msg, _, callback) {
-
-    if (msg.body) throw new Error('deprecated message format')
-
-    const { to, from, method, status, error, stream, data, blob } = msg 
+    const { to, from, method, status, error, stream, data, chunk } = msg 
     const header = { to, from, method, status  }
 
     // error could be an Error, an object, a string TODO
@@ -67,13 +67,13 @@ class Peer extends Duplex {
     const hasStream = !!stream
     // data could be anything 
     const hasData = data !== undefined
-    // blob must be a Buffer
-    const hasBlob = Buffer.isBuffer(blob)
+    // chunk must be a Buffer
+    const hasChunk = Buffer.isBuffer(chunk)
 
     if (hasError) header.error = ErrorStringify(error).length
     if (hasStream) header.stream = JSON.stringify(stream).length 
     if (hasData) header.data = JSON.stringify(data).length
-    if (hasBlob) header.blob = blob.length
+    if (hasChunk) header.chunk = chunk.length
 
     this.conn.write(JSON.stringify(header))
     this.conn.write('\n')
@@ -93,8 +93,8 @@ class Peer extends Duplex {
       this.conn.write('\n')
     }
 
-    if (hasBlob) {
-      this.conn.write(blob)
+    if (hasChunk) {
+      this.conn.write(chunk)
       this.conn.write('\n')
     }
 
@@ -114,13 +114,13 @@ class Peer extends Duplex {
   receive (data) {
     while (data.length) {
       if (this.message) { 
-        // expecting data or blob
+        // expecting data or chunk
         const msg = this.message
 
         const hasError = Number.isInteger(msg.error)
         const hasStream = Number.isInteger(msg.stream)
         const hasData = Number.isInteger(msg.data)
-        const hasBlob = Number.isInteger(msg.blob)
+        const hasChunk = Number.isInteger(msg.chunk)
 
         // buffer length
         const buflen = this.bufs.reduce((sum, c) => sum + c.length, 0)
@@ -128,7 +128,7 @@ class Peer extends Duplex {
         const bodylen = (hasError ? msg.error + 1 : 0) +
           (hasStream ? msg.stream + 1 : 0) +
           (hasData ? msg.data + 1 : 0) +
-          (hasBlob ? msg.blob + 1 : 0)
+          (hasChunk ? msg.chunk + 1 : 0)
 
         if (buflen + data.length >= bodylen) {
           this.message = null
@@ -155,10 +155,10 @@ class Peer extends Duplex {
             body = body.slice(len + 1)
           }
 
-          if (hasBlob) {
-            msg.blob = body.slice(0, msg.blob)
+          if (hasChunk) {
+            msg.chunk = body.slice(0, msg.chunk)
           }
-          this.handleMsg(msg)
+          this.handleMessage(msg)
         } else {
           this.bufs.push(data)
           data = data.slice(data.length)
@@ -173,10 +173,10 @@ class Peer extends Duplex {
           const msg = JSON.parse(Buffer.concat([...this.bufs, data.slice(0, idx)]))
           this.bufs = []
           data = data.slice(idx + 1)
-          if (msg.error || msg.stream || msg.data || msg.blob) {
+          if (msg.error || msg.stream || msg.data || msg.chunk) {
             this.message = msg
           } else {
-            this.handleMsg(msg)
+            this.handleMessage(msg)
           }
         }
       }
@@ -186,7 +186,7 @@ class Peer extends Duplex {
   /**
    *
    */
-  handleMsg (msg) {
+  handleMessage (msg) {
     debug(msg)
 
     if (msg.hasOwnProperty('body')) throw new Error('old school message format')
@@ -207,7 +207,7 @@ class Peer extends Duplex {
     }
   }
 
-  handleMsg (msg) {
+  handleMessage (msg) {
     debug(msg)
 
     if (msg.method) {
@@ -235,8 +235,8 @@ class Peer extends Duplex {
    */
   respond (msg, status, body) {
     if (typeof msg.from !== 'string') return
-    const { error, data, blob } = body
-    this.write({ to: msg.from, status, error, data, blob })
+    const { error, data, chunk } = body
+    this.write({ to: msg.from, status, error, data, chunk })
   }
 
   /**
@@ -303,10 +303,10 @@ class Peer extends Duplex {
     }
 
     // TODO
-    const { data, blob, stream } = body
+    const { data, chunk, stream } = body
 
     const req = new ClientRequest({ 
-      id, to, from, method, send, onClose, data, blob, stream
+      id, to, from, method, send, onClose, data, chunk, stream
     })
 
     this.handlers.set(req.from, req)
@@ -330,7 +330,7 @@ class Peer extends Duplex {
 
   /**
    * the callback signature is (err, msg) => {} where 
-   * msg is { data, blob, readable } 
+   * msg is { data, chunk, readable } 
    */
   get (to, body, callback) {
     return this.request('GET', to, body, callback)

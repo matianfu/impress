@@ -122,14 +122,14 @@ class StreamRequest extends Mixin(Writable) {
     props.autoDestroy = true
     super(props)
 
-    const { data, blob, stream } = props
+    const { data, chunk, stream } = props
     this.stream = stream
     this._send({
       to: this.to,
       from: this.from,
       method: this.method,
       data,
-      blob,
+      chunk,
       stream
     })
     this.sink = undefined
@@ -139,18 +139,18 @@ class StreamRequest extends Mixin(Writable) {
   /**
    * stream.Writable's internal _write method
    */
-  _write (chunk, encoding, callback) {
+  _write (msg, encoding, callback) {
     if (this.sink) {
-      const { data, blob } = chunk
+      const { data, chunk } = msg
       this._send({
         to: this.sink,
         from: this.from,
         data,
-        blob
+        chunk
       })
       callback()
     } else {
-      this.pendingWrite = { chunk, encoding, callback }
+      this.pendingWrite = { msg, encoding, callback }
     }
   }
 
@@ -178,17 +178,17 @@ class StreamRequest extends Mixin(Writable) {
    * ERROR - final state with error
    * RESPONDED -  success, may be but not necessarily a final state
    */
-  handleMessage ({ status, error, stream: opts, data, blob }) {
+  handleMessage ({ status, error, stream: opts, data, chunk }) {
     switch (this.state) {
       case 'HANDSHAKE': {
         if (opts.sink) {
           this.sink = opts.sink
           this.state = 'REQUESTING'
           if (this.pendingWrite) {
-            const { chunk, encoding, callback } = this.pendingWrite
+            const { msg, encoding, callback } = this.pendingWrite
             delete this.pendingWrite
-            const { data, blob } = chunk
-            this._send({ to: this.sink, from: this.path, data, blob })
+            const { data, chunk } = msg
+            this._send({ to: this.sink, from: this.path, data, chunk })
             callback()
           } else if (this.pendingEnd) {
           }
@@ -205,9 +205,9 @@ class StreamRequest extends Mixin(Writable) {
               read () {}
             })
             stream.opts = opts
-            this.response = { data, blob, stream }
+            this.response = { data, chunk, stream }
           } else {
-            this.response = { data, blob }
+            this.response = { data, chunk }
           }
 
           this.state = 'RESPONDED'
@@ -216,10 +216,10 @@ class StreamRequest extends Mixin(Writable) {
       } break
       case 'RESPONDED': {
         if (this.source) {
-          if (data !== undefined || blob) {
+          if (data !== undefined || chunk) {
             const msg = {}
             if (data !== undefined) msg.data = data
-            if (blob) msg.blob = blob
+            if (chunk) msg.chunk = chunk
             this.response.stream.push(msg) 
           } else {
             this.response.stream.push(null) 
@@ -235,20 +235,20 @@ class StreamRequest extends Mixin(Writable) {
 class SimpleRequest extends Mixin(EventEmitter) {
   constructor (props) {
     super(props)
-    const { to, from, path, method, data, blob } = props
+    const { to, from, path, method, data, chunk } = props
     this._send({
       to: this.to,
       from: this.from,
       path: this.path,
       method,
       data,
-      blob
+      chunk
     })
 
     this.state = 'REQUESTED'
   }
 
-  handleMessage ({ status, error, stream, data, blob }) {
+  handleMessage ({ status, error, stream, data, chunk }) {
     if (this.state === 'REQUESTED') {
       // TODO error if status not set or invalid
 
@@ -262,7 +262,7 @@ class SimpleRequest extends Mixin(EventEmitter) {
           }), stream)
         } else {
           if (data !== undefined) res.data = data
-          if (blob) res.blob = blob
+          if (chunk) res.chunk = chunk
         }
       } else {
         // TODO accept string
@@ -277,7 +277,7 @@ class SimpleRequest extends Mixin(EventEmitter) {
 
       const msg = {}
       if (data !== undefined) msg.data = data
-      if (blob) msg.blob = blob
+      if (chunk) msg.chunk = chunk
 
       if (Object.keys(msg).length) {
         this.response.stream.push(msg)
