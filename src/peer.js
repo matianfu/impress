@@ -314,16 +314,8 @@ class Peer extends Duplex {
 
     if (callback) {
       req
-        .then(response => {
-          callback(null, response) 
-        }) 
-        .catch(err => {
-          try {
-            callback(err, {})
-          } catch (e) {
-            console.log(e)
-          }
-        })
+        .then(response => callback(null, response)) 
+        .catch(err => callback(err, {}))
     }
 
     return req
@@ -334,7 +326,27 @@ class Peer extends Duplex {
    * msg is { data, chunk, readable } 
    */
   get (to, body, callback) {
-    return this.request('GET', to, body, callback)
+    if (typeof body === 'function') {
+      callback = body
+      body = {}
+    }
+
+    if (!callback) {
+
+      body = body || {}
+
+      return new Promise((resolve, reject) => {
+        this.request('GET', to, body, (err, response) => {
+          if (err) {
+            reject(err)
+          } else {
+            resolve(response)
+          }
+        }) 
+      })
+    } else {
+      return this.request('GET', to, body, callback)
+    }
   }
 
   post (to, body, callback) {

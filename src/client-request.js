@@ -1,5 +1,5 @@
 const EventEmitter = require('events')
-const { Readable, Writable } = require('stream')
+const { Readable, Writable, Duplex } = require('stream')
 
 /**
  *
@@ -38,20 +38,13 @@ const Mixin = Base => class extends Base {
    */
   constructor (props) {
     super(props)
-
     this._send = props.send
     this._onClose = props.onClose
 
     this.id = props.id
     this.to = props.to
-    this.from = props.from
     this.path = props.path
-
-    this.sink = undefined
-
     this.method = props.method
-
-    this.response = null
 
     this.promise = new Promise((resolve, reject) => {
       const listenResponse = response => {
@@ -68,7 +61,17 @@ const Mixin = Base => class extends Base {
       this.once('error', listenError)
     })
 
-    this.once('error', err => this.destroy(err))
+    this.promise.then(() => {}).catch(e => {})
+
+    this.state = 'INIT'
+
+    this.sink = undefined
+    this.response = null
+
+    this.once('error', err => {
+      // this.destroy(err) 
+    })
+
     this.once('close', () => this._onClose(this.id, this.from))
   }
 
@@ -87,10 +90,16 @@ const Mixin = Base => class extends Base {
   }
 }
 
-class StreamRequest extends Mixin(Writable) {
+/**
+ * Error Handling
+ *
+ *
+ */
+class StreamRequest extends Mixin(Duplex) {
   constructor (props) {
     props.objectMode = true
     props.autoDestroy = true
+
     super(props)
 
     const { data, chunk, stream } = props
@@ -125,6 +134,9 @@ class StreamRequest extends Mixin(Writable) {
     }
   }
 
+  /**
+   * stream.Writable's internal _final method
+   */
   _final (callback) {
     if (this.sink) {
       this._send({ to: this.sink })
@@ -215,14 +227,51 @@ class StreamRequest extends Mixin(Writable) {
 }
 
 /**
- *
+ * SimpleRequest simulates destroy method and emits error, end, close
  */
-class SimpleRequest extends Mixin(EventEmitter) {
+class SimpleRequest extends Mixin(Readable) {
   constructor (props) {
+    props.objectMode = true
+    props.autoDestroy = true
+
     super(props)
     const { to, path, method, data, chunk } = props
-    this._send({ to, from: path, method, data, chunk })
-    this.state = 'REQUESTED'
+
+    process.nextTick(() => {
+      const msg = { to, from: path, method }
+      if (data !== undefined) msg.data = data
+      if (chunk) msg.chunk = chunk
+
+      // this._send({ to, from: path, method, data, chunk })
+      this._send(msg)
+      this.state = 'REQUESTED'
+      this.emit('end')
+    })
+  }
+
+  /**
+   * > Destroy the stream, and emit the passed 'error' and a 'close' event. 
+   * > After this call, the writable stream has ended and subsequent calls to 
+   * > write() or end() will result in an ERR_STREAM_DESTROYED error. 
+   * 
+   * Send an error/abort message to the responder if appropriate
+   *  
+   * node stream.Writable: 
+   * 1. destory() calls _destroy() synchronously
+   * 2. _destroy callback emits error and close asynchronously (nextTick)
+   * see: https://gist.github.com/matianfu/39127d0ddd99d8fb2b1c15592bd4b8b4
+   *
+   * destroy is the fuse-blowing method for error handling
+   */
+  destroy (err) {
+    if (this.state === 'INIT') {
+         
+    } 
+
+    process.nextTick(() => {
+      if (err) this.emit('error', err)
+      this.emit('close')
+    })
   }
 
   handleMessage ({ status, error, stream, data, chunk }) {
@@ -232,11 +281,18 @@ class SimpleRequest extends Mixin(EventEmitter) {
       const res = {}
       if (status >= 200 && status < 300) {
         if (stream) {
+
+          const destroy = err => this.destroy(err)
+
           res.stream = Object.assign(new Readable({
             objectMode: true,
             autoDestroy: true,
             read (size) {}
           }), stream)
+
+          // this.stream = stream
+          // res.stream = this
+
         } else {
           if (data !== undefined) res.data = data
           if (chunk) res.chunk = chunk
@@ -281,5 +337,8 @@ const ClientRequest = props => {
     return new SimpleRequest(props)
   }
 }
+
+ClientRequest.SimpleRequest = SimpleRequest
+ClientRequest.StreamRequest = StreamRequest
 
 module.exports = ClientRequest

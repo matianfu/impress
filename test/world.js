@@ -56,6 +56,34 @@ describe(path.basename(__filename), () => {
     })
   })
 
+  it.only('GET /hello (thenable)', done => {
+    alice.get('/hello', (req, res) => res.status(200).send({ data: 'world'}))
+
+    // 404 equivalent
+    alice.use((msg, peer, next) => next(new Error('no handler')))
+    // 500 equivalent
+    alice.use((err, msg, peer, next) => console.log(err))
+
+    alice.listen('/run/impress')
+
+    const peer = bob.connect('/run/impress')
+/**
+    peer.get('/hello', (err, { data, blob, readable }) => {
+      expect(err).to.equal(null)
+      expect(data).to.equal('world')
+      expect(blob).to.be.undefined
+      expect(readable).to.be.undefined
+      done()
+    })
+*/
+    peer.get('/hello')
+      .then(({ data, blob, stream }) => {
+        done() 
+      })
+      .catch(e => done(e))
+  })
+
+
   /**
    * bob: { 
    *   to: '/hello', 
