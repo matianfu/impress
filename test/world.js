@@ -12,6 +12,10 @@ const expect = require('chai').expect
 const ServerResponse = require('src/server-response')
 const impress = require('src/index') 
 
+const stripUndefined = o => 
+  Object.keys(o).reduce((acc, key) => 
+    Object.assign(acc, o[key] !== undefined ? { [key]: o[key] } : undefined ), {})
+
 describe(path.basename(__filename), () => {
 
   let alice, bob
@@ -56,7 +60,7 @@ describe(path.basename(__filename), () => {
     })
   })
 
-  it.only('GET /hello (thenable)', done => {
+  it('GET /hello (thenable)', done => {
     alice.get('/hello', (req, res) => res.status(200).send({ data: 'world'}))
 
     // 404 equivalent
@@ -115,10 +119,10 @@ describe(path.basename(__filename), () => {
   it('GET /hello (downstream)', done => {
     alice.get('/hello', (req, res) => {
       res.write({ data: 'hello' })
-      setTimeout(() => { 
+      // setTimeout(() => { 
         res.write({ data: 'world' })
         res.end()
-      }, 500)
+      // }, 500)
     })
 
     // 404 equivalent
@@ -130,18 +134,19 @@ describe(path.basename(__filename), () => {
 
     const peer = bob.connect('/run/impress')
     const req = peer.get('/hello', (err, { data, blob, stream }) => {
-      expect(err).to.equal(null)
-      expect(data).to.be.undefined
-      expect(blob).to.be.undefined
-
-      const read = []
-      stream.on('data', data => read.push(data))
-      stream.on('close', () => {
-        expect(read).to.deep.equal([
-          { data: 'hello' },
-          { data: 'world' }
-        ])
-        done()
+      setImmediate(() => {
+        expect(err).to.equal(null)
+        expect(data).to.be.undefined
+        expect(blob).to.be.undefined
+        const read = []
+        stream.on('data', data => read.push(data))
+        stream.on('end', () => {
+          expect(read.map(r => stripUndefined(r))).to.deep.equal([
+            { data: 'hello' },
+            { data: 'world' }
+          ])
+          done()
+        })
       })
     })    
   })
@@ -196,9 +201,9 @@ describe(path.basename(__filename), () => {
       done()
     })
 
-    req.write({ data: 'hello' })
-    req.write({ data: 'world' })
-    req.end()
+    req.stream.write({ data: 'hello' })
+    req.stream.write({ data: 'world' })
+    req.stream.end()
   })
 
   /**
@@ -230,19 +235,17 @@ describe(path.basename(__filename), () => {
         expect(blob).to.be.undefined
 
         const collection = []
-
         stream.on('data', data => collection.push(data))
         stream.on('end', () => {
-          expect(collection).to.deep.equal([
-            { data: 'foo' },
-            { data: 'bar' }
-          ])
+    
+          expect(collection.map(x => stripUndefined(x)))
+            .to.deep.equal([ { data: 'foo' }, { data: 'bar' } ])
           done()
         })
       })
 
-    req.write({ data: 'hello' })
-    req.write({ data: 'world' })
-    req.end()
+    req.stream.write({ data: 'hello' })
+    req.stream.write({ data: 'world' })
+    req.stream.end()
   })
 })
