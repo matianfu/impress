@@ -40,6 +40,10 @@ class State {
     this.ctx = ctx 
   }
 
+  /**
+   * @param {function} NextState - constructor of next state
+   *
+   */
   setState(NextState, ...args) {
     const ctx = this.ctx
     this.exit()
@@ -50,15 +54,15 @@ class State {
   }
 
   enter () {
-    console.log('entering ' + this.constructor.name)
+    // console.log('entering ' + this.constructor.name)
   }
 
   exit () {
-    console.log('exiting ' + this.constructor.name)
+    // console.log('exiting ' + this.constructor.name)
   }
 
   handleMessage (msg) {
-    console.log(this.constructor.name + ' handle message', msg)
+    // console.log(this.constructor.name + ' handle message', msg)
   }
 }
 
@@ -202,9 +206,6 @@ class Agent {
 
   /** this is an internal method */
   handleResponse ({ status, error, stream, data, chunk }) {
-
-    console.log(status, error, stream, data, chunk)
-
     if (status >= 200 && status < 300) {
       if (stream) {
         this.res = {
@@ -229,14 +230,20 @@ class Agent {
     }
   }
 
-  write (...args) {
+  /**
+   *
+   */
+  write (chunk, encoding, callback) {
     try {
-      this.state.write(...args)
+      this.state.write(chunk, encoding, callback)
     } catch (e) {
       console.log(e)
     }
   }
 
+  /**
+   *
+   */
   final (callback) {
     try {
       this.state.final(callback)

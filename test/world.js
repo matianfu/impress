@@ -42,7 +42,6 @@ describe(path.basename(__filename), () => {
    */
   it('GET /hello', done => {
     alice.get('/hello', (req, res) => res.status(200).send({ data: 'world'}))
-
     // 404 equivalent
     alice.use((msg, peer, next) => next(new Error('no handler')))
     // 500 equivalent
@@ -51,18 +50,17 @@ describe(path.basename(__filename), () => {
     alice.listen('/run/impress')
 
     const peer = bob.connect('/run/impress')
-    peer.get('/hello', (err, { data, blob, readable }) => {
+    peer.get('/hello', (err, { data, chunk, stream }) => {
       expect(err).to.equal(null)
       expect(data).to.equal('world')
-      expect(blob).to.be.undefined
-      expect(readable).to.be.undefined
+      expect(chunk).to.be.undefined
+      expect(stream).to.be.undefined
       done()
     })
   })
 
   it('GET /hello (thenable)', done => {
     alice.get('/hello', (req, res) => res.status(200).send({ data: 'world'}))
-
     // 404 equivalent
     alice.use((msg, peer, next) => next(new Error('no handler')))
     // 500 equivalent
@@ -71,22 +69,15 @@ describe(path.basename(__filename), () => {
     alice.listen('/run/impress')
 
     const peer = bob.connect('/run/impress')
-/**
-    peer.get('/hello', (err, { data, blob, readable }) => {
-      expect(err).to.equal(null)
-      expect(data).to.equal('world')
-      expect(blob).to.be.undefined
-      expect(readable).to.be.undefined
-      done()
-    })
-*/
     peer.get('/hello')
-      .then(({ data, blob, stream }) => {
+      .then(({ data, chunk, stream }) => {
+        expect(data).to.equal('world')    
+        expect(chunk).to.be.undefined
+        expect(stream).to.be.undefined
         done() 
       })
       .catch(e => done(e))
   })
-
 
   /**
    * bob: { 
@@ -124,7 +115,6 @@ describe(path.basename(__filename), () => {
         res.end()
       // }, 500)
     })
-
     // 404 equivalent
     alice.use((msg, peer, next) => next(new Error('no handler')))
     // 500 equivalent
@@ -133,11 +123,11 @@ describe(path.basename(__filename), () => {
     alice.listen('/run/impress')
 
     const peer = bob.connect('/run/impress')
-    const req = peer.get('/hello', (err, { data, blob, stream }) => {
+    const req = peer.get('/hello', (err, { data, chunk, stream }) => {
       setImmediate(() => {
         expect(err).to.equal(null)
         expect(data).to.be.undefined
-        expect(blob).to.be.undefined
+        expect(chunk).to.be.undefined
         const read = []
         stream.on('data', data => read.push(data))
         stream.on('end', () => {
@@ -186,14 +176,12 @@ describe(path.basename(__filename), () => {
       req.on('data', data => collection.push(data))
       req.on('end', () => res.send({ data: 'foobar' }))
     })
-
     // 404 equivalent
     alice.use((msg, peer, next) => next(new Error('no handler')))
     // 500 equivalent
     alice.use((err, msg, peer, next) => console.log(err))
 
     alice.listen('/run/impress')
-
     const peer = bob.connect('/run/impress')
     const req = peer.get('/hello', { stream: {} }, (err, { data }) => {
       expect(err).to.equal(null)
@@ -219,7 +207,6 @@ describe(path.basename(__filename), () => {
         res.end()
       })
     })
-
     // 404 equivalent
     alice.use((msg, peer, next) => next(new Error('no handler')))
     // 500 equivalent
@@ -229,10 +216,10 @@ describe(path.basename(__filename), () => {
 
     const peer = bob.connect('/run/impress')
     const req = peer.get('/hello', { stream: {} }, 
-      (err, { data, blob, stream }) => {
+      (err, { data, chunk, stream }) => {
         if (err) return done(err)
         expect(data).to.be.undefined
-        expect(blob).to.be.undefined
+        expect(chunk).to.be.undefined
 
         const collection = []
         stream.on('data', data => collection.push(data))
