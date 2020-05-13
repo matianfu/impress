@@ -122,6 +122,10 @@ class Requesting extends State {
   }
 }
 
+/**
+ * The request 
+ *
+ */
 class Requested extends State {
   /**
    * response, error, flow-control
@@ -161,27 +165,24 @@ class Responding extends State {
   }
 }
 
-class Responded extends State {
+class Responded extends State { 
 }
 
-class Failed extends State {
+class Error extends State {
 }
 
 /**
- * Agent is a light-weight class 
+ * Initiator is a light-weight class 
  */
-class Agent {
+class Initiator {
   /**
-   *
+   * @parma {object} props
+   * @param {function} props.send - write to underlying connection
+   * @param {function} props.onResponse - 
+   * @param {function} props.onClose -
    */
-  constructor ({ 
-    send, onResponse, onClose,
-    to, path, method, 
-    data, chunk, stream
-  }) {
+  constructor ({ send, to, path, method, data, chunk, stream }) {
     this._send = send
-    this._onClose = onClose
-    this._onResponse = onResponse
 
     this.req = { to, path, method }
     this.res = undefined
@@ -220,7 +221,10 @@ class Agent {
         this.res = { status, data, chunk }
       }
     }
-    this._onResponse(null, this.res)
+
+    // this._onResponse(null, this.res)
+
+    this.req.emit(this.res)
   }
 
   handleMessage (msg) {
@@ -259,4 +263,4 @@ class Agent {
   }
 } 
 
-module.exports = Agent
+module.exports = Initiator
