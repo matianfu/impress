@@ -20,11 +20,13 @@ const DeferrableReadable = require('./deferrable-readable')
  * | 5    | (close)              | <- | response data (close)   |
  *
  * States:
+ * 
  * 1. Handshaking (stream)
  * 2. Requesting (stream)
  * 3. Requested
  * 4. Responded (including 4xx/5xx status, may have sub-states)
  * 5. Error
+ *
  */
 
 /** base state */
