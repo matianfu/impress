@@ -189,9 +189,9 @@ describe(path.basename(__filename), () => {
       done()
     })
 
-    req.stream.write({ data: 'hello' })
-    req.stream.write({ data: 'world' })
-    req.stream.end()
+    req.write({ data: 'hello' })
+    req.write({ data: 'world' })
+    req.end()
   })
 
   /**
@@ -231,8 +231,8 @@ describe(path.basename(__filename), () => {
         })
       })
 
-    req.stream.write({ data: 'hello' })
-    req.stream.write({ data: 'world' })
-    req.stream.end()
+    req.write({ data: 'hello' })
+    req.write({ data: 'world' })
+    req.end()
   })
 })

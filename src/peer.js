@@ -311,21 +311,11 @@ class Peer extends Duplex {
 
     // TODO
     const { data, chunk, stream } = body
-    const agent = new ClientAgent({
-      send, onClose, onResponse,
-      id, to, path, method, 
-      data, chunk, stream
-    })
-
+    const agent = new ClientAgent({ send, to, path, method, data, chunk, stream })
+    const req = agent.req
+    req.once('response', res => callback(null, res))
+    req.once('error', err => callback(err))
     this.handlers.set(path, agent)
-/**
-    if (callback) {
-      agent.promise
-        .then(response => callback(null, response)) 
-        .catch(err => callback(err, {}))
-    }
-*/
-
     return agent.req
   }
 

@@ -1,3 +1,4 @@
+const Emitter = require('events')
 const { Writable, Readable } = require('stream')
 const DeferrableReadable = require('./deferrable-readable')
 
@@ -131,16 +132,14 @@ class Requested extends State {
    * response, error, flow-control
    */
   handleMessage(msg) {
-    if (msg.status) {
-      this.ctx.handleResponse(msg)
-      if (this.ctx.res.stream) {
-        this.setState(Responding)
+    super.handleMessage(msg)
+    if (Number.isInteger(msg.status)) {
+      if (msg.status >= 200 && msg.status < 300) {
+        this.setState(Responded, msg)
       } else {
-        this.setState(Responded)
+        this.setState(Error, msg)  
       }
-    } else if (msg.error) {
-    } else {
-    } 
+    }
   } 
 }
 
@@ -152,6 +151,37 @@ class Responding extends State {
    * non-status data or error, flow-control
    */
   handleMessage({ status, error, stream, data, chunk }) {
+  }
+}
+
+class Responded extends State { 
+  enter (msg) {
+    super.enter(msg)
+
+    const { status, data, chunk, stream } = msg
+
+    if (stream) {
+      const rs = new DeferrableReadable({
+        objectMode: true,
+        read: this.ctx.read.bind(this.ctx),
+        destroy: this.ctx.destroy.bind(this.ctx)
+      })
+
+      this.ctx.res = { status, data, chunk, stream: Object.assign(rs, stream) }
+    } else {
+      this.ctx.res = { status, data, chunk }
+    }
+   
+    this.ctx.req.emit('response', this.ctx.res)
+  }
+
+  handleMessage (msg) {
+    super.handleMessage(msg)
+
+    if (!this.ctx.res.stream) return
+
+    const { status, error, data, chunk, stream } = msg
+
     if (status) {
     } else if (error) {
       
@@ -160,15 +190,13 @@ class Responding extends State {
       this.ctx.res.stream.push(msg)
     } else {
       this.ctx.res.stream.push(null)
-      this.setState(Responded) 
     }
   }
 }
 
-class Responded extends State { 
-}
-
 class Error extends State {
+  enter (msg) {
+  }
 }
 
 /**
@@ -183,40 +211,29 @@ class Initiator {
    */
   constructor ({ send, to, path, method, data, chunk, stream }) {
     this._send = send
-
     this.req = { to, path, method }
     this.res = undefined
 
+    this._send({ to, from: path, method, data, chunk, stream })
+   
+    const write = this.write.bind(this)
+    const final = this.final.bind(this)
+    const destroy = this.destroy.bind(this)
+
     if (stream) {
-      const options = { 
-        objectMode: true,
-        write: this.write.bind(this),
-        final: this.final.bind(this),
-        destroy: this.destroy.bind(this)
-      }
-      this.req.stream = new Writable(options)
-      this._send({ to, from: path, method, data, chunk, stream })
+      this.req = new Writable({ objectMode: true, write, final, destroy })
       this.state = new Handshaking(this)
     } else {
-      this._send({ to, from: path, method, data, chunk })
+      this.req = Object.assign(new Emitter(), { destroy })
       this.state = new Requested(this)
     }
 
-    this.state.enter()
   }
 
   /** this is an internal method */
   handleResponse ({ status, error, stream, data, chunk }) {
     if (status >= 200 && status < 300) {
       if (stream) {
-        this.res = {
-          status, data, chunk,
-          stream: Object.assign(new DeferrableReadable({
-            objectMode: true,
-            read: this.read.bind(this),
-            destroy: this.destroy.bind(this)
-          }), stream)
-        }
       } else {
         this.res = { status, data, chunk }
       }

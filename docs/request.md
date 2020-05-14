@@ -1,14 +1,14 @@
 # Initiator
 
-`Initiator` is the client request library for RP, equivalent to `http.ClientRequest` for request and `http.IncommingMessage` for response.
+`Initiator` is the client request library for RP, similar to `ClientRequest` (request) and `IncommingMessage` (response) in Node http.
 
-`Initiator` separates three interfaces into three distinct objects.
+`Initiator` separates its interfaces into three distinct objects.
 
 1. The `initiator` object interfaces itself to underlying transport layer.
-2. `initiator.req` is the request object, which is a `writable` stream plus an asynchronous operation for request => response. TODO
+2. `initiator.req` is the request object.
 3. `initiator.res` is the response object. 
 
-Internally, three objects are *ganged* together synchronously. It works like a single duplex stream with interface split into three parts.
+Internally, three objects works synchronously like a single object.
 
 # Transport Interface
 
@@ -16,17 +16,27 @@ Internally, three objects are *ganged* together synchronously. It works like a s
 2. `drain`, provided;
 3. `handleMessage`, provided;
 
+# Stages
+
+`Initiator` models request-response as an asynchronous operation, possibly with a response stream, which is NOT included in the asynchronous operation in in terms of life cycle.
+
+Request object (`initiator.req`) is responsible for the asynchronous operation, which **closes** when the first response message arrives. Then the object is unusable.
+
+If there is a response stream, it has its own `destroy()`, `error` and `close` events.
+
+This model differs from that of Node http, where request is a stream and response is a sub-stream.
+
 # Request Object
 
 `initiator.req` represents the asynchronous operation for request => response, where the request data consists of one or more messages (stream).
 
-It is a `Emitter` if the request consists of one message, or a `Writable` if the request have multiple messages.
+It is a `Emitter` if the request consists of one message, or a `Writable` if the request have multiple messages. 
 
-In the former case, it has `destroy` and emits `error`, `response` and `close`.
-
-In the latter case, it has `destroy`, `write`, `end` and emits `error`, `finish`, `response` and `close`.
+In either case, it has `destroy` and emits `error`, `response` and `close`. If it is `Writable`, `write`, `end` and `finish` event are available.
 
 `destroy` always trigger an `error` event with `EDESTROYED` as its error code.
+
+After request object terminates, the destroy is an alias to destroy method on the response stream.
 
 # Response Object
 
