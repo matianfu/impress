@@ -1,6 +1,6 @@
 # Initiator
 
-`Initiator` is the client request library for RP, similar to `ClientRequest` and `IncommingMessage` (for response) in Node http.
+`Initiator` is the client request library for RP, similar to `ClientRequest` and `IncommingMessage` (for response) in Node [http](https://nodejs.org/dist/latest/docs/api/http.html).
 
 `Initiator` separates its interfaces into three distinct objects.
 
