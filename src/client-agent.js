@@ -19,24 +19,17 @@ const DeferrableReadable = require('./deferrable-readable')
  * | 4    |                      | <- | 200 success             |
  * | 5    | (close)              | <- | response data (close)   |
  *
- * Request is a duplex stream and a thenable.
- * Request does NOT support builder pattern.
- *
- * Request is HEAVY for non-stream request/response round-trip.
+ * States:
+ * 1. Handshaking (stream)
+ * 2. Requesting (stream)
+ * 3. Requested
+ * 4. Responded (including 4xx/5xx status, may have sub-states)
+ * 5. Error
  */
 
-/**
- * States: init, handshaking, requesting, 
- *
- * init - send request or handshake a stream
- * handshaking - expect message from 
- * 
- */
-
+/** base state */
 class State {
-  /**
-   *
-   */
+  /** @param {object} ctx - context object */
   constructor (ctx) {
     this.ctx = ctx 
   }
@@ -97,6 +90,10 @@ class Handshaking extends State {
   write (chunk, encoding, callback) {
     this.deferred = { chunk, encoding, callback }
   }
+
+  final (callback) {
+    this.deferred = { callback }
+  }
 }
 
 /**
@@ -129,7 +126,7 @@ class Requesting extends State {
  */
 class Requested extends State {
   /**
-   * response, error, flow-control
+   * response, error, flow-control (out-of-sync)
    */
   handleMessage(msg) {
     super.handleMessage(msg)
@@ -141,17 +138,6 @@ class Requested extends State {
       }
     }
   } 
-}
-
-/**
- * Responding state is specific to streaming response
- */
-class Responding extends State {
-  /**
-   * non-status data or error, flow-control
-   */
-  handleMessage({ status, error, stream, data, chunk }) {
-  }
 }
 
 class Responded extends State { 
@@ -228,20 +214,6 @@ class Initiator {
       this.state = new Requested(this)
     }
 
-  }
-
-  /** this is an internal method */
-  handleResponse ({ status, error, stream, data, chunk }) {
-    if (status >= 200 && status < 300) {
-      if (stream) {
-      } else {
-        this.res = { status, data, chunk }
-      }
-    }
-
-    // this._onResponse(null, this.res)
-
-    this.req.emit(this.res)
   }
 
   handleMessage (msg) {
