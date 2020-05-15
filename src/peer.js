@@ -8,7 +8,7 @@ const IncomingMessage = require('./incoming-message')
 const ServerResponse = require('./server-response')
 const ClientRequest = require('./client-request')
 
-const ClientAgent = require('./client-agent')
+const Initiator = require('./initiator')
 
 const ErrorStringify = error => error === null 
   ? JSON.stringify(error)
@@ -311,12 +311,12 @@ class Peer extends Duplex {
 
     // TODO
     const { data, chunk, stream } = body
-    const agent = new ClientAgent({ send, to, path, method, data, chunk, stream })
-    const req = agent.req
+    const initiator = new Initiator({ send, to, path, method, data, chunk, stream })
+    const req = initiator.req
     req.once('response', res => callback(null, res))
     req.once('error', err => callback(err))
-    this.handlers.set(path, agent)
-    return agent.req
+    this.handlers.set(path, initiator)
+    return initiator.req
   }
 
   /**
