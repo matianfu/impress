@@ -57,10 +57,10 @@ Example:
 
 ```json
 {
-	"to": "/path/to/target",
-    "from": "/path/of/source",
-    "method": "GET",
-    "data": "hello"
+  "to": "/path/to/target",
+  "from": "/path/of/source",
+  "method": "GET",
+  "data": "hello"
 }
 ```
 
@@ -80,7 +80,7 @@ Example:
 	"to": "/path/to/target",
 	"from": "/path/of/source",
 	"method": "GET",
-    "stream": {}
+  "stream": {}
 }
 ```
 
@@ -99,12 +99,12 @@ Example:
 
 ```json
 {
-    "to": "/path/to/request/source",
-    "status": 400,
-    "error": {
-        "message": "data out of range",
-        "code": "EINVAL"
-    }
+  "to": "/path/to/request/source",
+  "status": 400,
+  "error": {
+    "message": "data out of range",
+    "code": "EINVAL"
+  }
 }
 ```
 
@@ -117,9 +117,9 @@ Example:
 
 ```json
 {
-    "to": "/path/to/request/source",
-    "status": 200,
-    "data": "data you want"
+  "to": "/path/to/request/source",
+  "status": 200,
+  "data": "data you want"
 }
 ```
 
@@ -133,11 +133,11 @@ Example:
 
 ```json
 {
-    "to": "/path/to/request/source",
-    "status": 200,
-    "stream": {
-        "source": "/path/to/requested/resource/#streams/1"
-    }
+  "to": "/path/to/request/source",
+  "status": 200,
+  "stream": {
+    "source": "/path/to/requested/resource/#streams/1"
+  }
 }
 ```
 
@@ -154,10 +154,10 @@ Example:
 
 ```json
 {
-    "to": "/path/to/request/source",
-    "stream": {
-        "sink": "/path/to/requested/resource/#streams/2"
-    }
+  "to": "/path/to/request/source",
+  "stream": {
+    "sink": "/path/to/requested/resource/#streams/2"
+  }
 }
 ```
 
@@ -172,10 +172,10 @@ Example:
 
 ```json
 {
-    "to": "/path/to/requested/resource/#streams/2",
-    "data": {
-        "hello": "world"
-    }
+  "to": "/path/to/requested/resource/#streams/2",
+  "data": {
+    "hello": "world"
+  }
 }
 ```
 
@@ -193,10 +193,10 @@ Example:
 
 ```json
 {
-    "to": "/path/to/responding/resource/#streams/3",
-    "stream": {
-        "flow": "false"
-    }
+  "to": "/path/to/responding/resource/#streams/3",
+  "stream": {
+    "flow": "false"
+  }
 }
 ```
 
@@ -208,7 +208,7 @@ Example:
 
 ```json
 {
-    "to": "/path/to/responding/resource/#streams/4"
+  "to": "/path/to/responding/resource/#streams/4"
 }
 ```
 
@@ -222,10 +222,10 @@ Example:
 
 ```json
 {
-    "to": "/path/to/responding/resource/#streams/5",
-    "error": {
-        message: "I can not move on, sorry."
-    }
+  "to": "/path/to/responding/resource/#streams/5",
+  "error": {
+    "message": "I cannot move on, sorry."
+  }
 }
 ```
 > For allowing the request initiator to abort the request, the responder could reply with a stream, even if there is only single object. The responder could do so if preparing response is time consuming, or the operation is buffered in a queue. Responding with a stream gives the request initiator a chance to abort it.
