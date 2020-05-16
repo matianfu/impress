@@ -43,10 +43,15 @@ For error status, only `error` property is concerned. For successful status, `da
 1. Handshaking (request stream)
 2. Requesting (request stream)
 3. Requested (expecting response)
-4. Responded (may have sub-states)
-5. Error (error status code is not considered to be an error)
+4. Successful (status code)
+   1. Single (only one message)
+   2. Source (indicating a stream)
+   3. Streaming
+   4. End
+   5. Failed
+5. Failed (error or error status code)
 
 # Notes
 
-* This is a sugar-free implementation. Everthing should be kept minimal and orthogonal for easy testing.
+* This is a sugar-free implementation. Everything is kept minimal and orthogonal for easy testing.
 

@@ -6,7 +6,9 @@
   "scripts": {
     "test": "sudo env NODE_PATH=. PATH=$(dirname $(which node)):$PATH nodemon --exec mocha test",
     "dest": "sudo env NODE_PATH=. PATH=$(dirname $(which node)):$PATH DEBUG=\"express:*\" nodemon --exec mocha test",
-    "dest1": "sudo env NODE_PATH=. PATH=$(dirname $(which node)):$PATH DEBUG=\"express:*\" nodemon --exec mocha"
+    "dest1": "sudo env NODE_PATH=. PATH=$(dirname $(which node)):$PATH DEBUG=\"express:*\" nodemon --exec mocha",
+    "unit": "NODE_PATH=. nodemon --exec mocha unit",
+    "unit1": "NODE_PATH=. nodemon --exec mocha"
   },
   "repository": {
     "type": "git",

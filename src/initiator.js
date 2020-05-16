@@ -263,10 +263,14 @@ class Failed extends State {
  */
 class Initiator {
   /**
-   * @parma {object} props
-   * @param {function} props.send - write to underlying connection
-   * @param {function} props.onResponse -
-   * @param {function} props.onClose -
+   * @parma {object}    props
+   * @param {function}  props.send - write to underlying connection
+   * @param {string}    props.to - target path
+   * @param {string}    props.path - source path
+   * @param {string}    props.method
+   * @param {object}    [props.stream]
+   * @param {*}         [props.data]
+   * @param {buffer}    [props.chunk]
    */
   constructor ({ send, to, path, method, data, chunk, stream }) {
     this._send = send
@@ -348,6 +352,14 @@ class Initiator {
 
   destroy (err) {
   }
+}
+
+Initiator.States = {
+  Handshaking, 
+  Requesting,
+  Requested,
+  Responded,
+  Failed
 }
 
 module.exports = Initiator
