@@ -257,7 +257,8 @@ A *language* a is a set of all possible message sequences.
 The following diagrams are the language of RP. 
 
 ```
-1. Non-Streaming Request, Error or Non-Streaming Successful Response:
+1. Non-Streaming Request, Error or Non-Streaming 
+   Successful Response:
 
 Q       ->
             <- E|B
@@ -266,9 +267,10 @@ Q       ->
 
 Q       -> 
             <- O
-M*A?    ->  <- D*(N|A)    # Strictly, the first `M` on left side 
-                          # should not be sent before the first `D` 
-                          # arrives. But this is harmless.
+M*A?    ->  <- D*(N|A)    # Strictly, the first M on 
+                          # left side should not be sent 
+                          # before the first D arrives.
+                          # But this is harmless.
 
 3. Streaming Request, Error Response
 
@@ -282,6 +284,7 @@ U       ->
             <- I
 D*N     ->  <- M*
             <- B
+
 5. Streaming Request, Streaming Successful Response
 
 U       ->
