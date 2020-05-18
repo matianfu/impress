@@ -252,7 +252,7 @@ The set of all letters is the *alphabet*.
 
 # 4. Language
 
-A *language* a is a set of all possible message sequences.
+A *language* is a set consists of all possible message sequences.
 
 The following diagrams are the language of RP. 
 
@@ -262,7 +262,8 @@ The following diagrams are the language of RP.
 
 Q       ->
             <- E|B
-
+```
+```
 2. Non-Streaming Request, Streaming Successful Response:
 
 Q       -> 
@@ -272,20 +273,23 @@ M*A?    ->  <- D*(N|A)    # Strictly, the first M on
                           # sent before the first D 
                           # arrives. But this is 
                           # harmless.
-
+```
+```
 3. Streaming Request, Error Response
 
 U       ->
             <- I
 D*(N|A) ->  <- M*E
-
+```
+```
 4. Streaming Request, Non-Streaming Successful Response
 
 U       ->
             <- I
 D*N     ->  <- M*
             <- B
-
+```
+```
 5. Streaming Request, Streaming Successful Response
 
 U       ->
