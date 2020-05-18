@@ -264,7 +264,8 @@ Q       ->
             <- E|B
 ```
 ```
-2. Non-Streaming Request, Streaming Successful Response:
+2. Non-Streaming Request, Streaming Successful
+   Response:
 
 Q       -> 
             <- O
