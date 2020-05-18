@@ -77,9 +77,9 @@ Example:
 
 ```json
 {
-	"to": "/path/to/target",
-	"from": "/path/of/source",
-	"method": "GET",
+  "to": "/path/to/target",
+  "from": "/path/of/source",
+  "method": "GET",
   "stream": {}
 }
 ```
