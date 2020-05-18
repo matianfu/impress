@@ -1,4 +1,4 @@
-This document defines message type and format.
+This document defines message format.
 
 # 1. Properties
 
@@ -229,3 +229,108 @@ Example:
 }
 ```
 > For allowing the request initiator to abort the request, the responder could reply with a stream, even if there is only single object. The responder could do so if preparing response is time consuming, or the operation is buffered in a queue. Responding with a stream gives the request initiator a chance to abort it.
+
+# 3. Alphabet
+
+Each type of message are assigned a letter in the following table, including an inaction.
+
+| message type                       | letter     |
+| ---------------------------------- | ---------- |
+| Non-Streaming Request              | Q          |
+| Streaming Request                  | U (upload) |
+| Error Response                     | E          |
+| Successful Response, Non-Streaming | B (body)   |
+| Successful Response, Streaming     | O (source) |
+| Stream Sink                        | I          |
+| Stream Data                        | D          |
+| Stream Meta Data                   | M          |
+| Stream End                         | N (null)   |
+| Stream Abort                       | A          |
+| inaction                           | T          |
+
+The set of all letters is the *alphabet*.
+
+# 4. Language
+
+A *language* a is a set of all possible message sequences.
+
+The following diagrams are the language of RP. 
+
+```
+1. Non-Streaming Request, Error or Non-Streaming Successful Response:
+
+Q       ->
+            <- E|B
+
+2. Non-Streaming Request, Streaming Successful Response:
+
+Q       -> 
+            <- O
+M*A?    ->  <- D*(N|A)    # Strictly, the first `M` on left side 
+                          # should not be sent before the first `D` 
+                          # arrives. But this is harmless.
+
+3. Streaming Request, Error Response
+
+U       ->
+            <- I
+D*(N|A) ->  <- M*E
+
+4. Streaming Request, Non-Streaming Successful Response
+
+U       ->
+            <- I
+D*N     ->  <- M*
+            <- B
+5. Streaming Request, Streaming Successful Response
+
+U       ->
+            <- I
+D*N     ->  <- M*
+            <- O
+M*A?    ->  <- D*(N|A)
+```
+
+# 5. Discussion on the Diagram
+
+The diagram is essentially a sequence diagram, where messages are arranged top-down to indicate time sequence.
+
+In our diagram, we have two modifications:
+- messages from both sides are allowed in the same line, indicating the concurrency; in sequence diagram, this is drawn by a *parallel block*;
+- multiple messages may be grouped into a regular expression, which is more flexible and expressive.
+
+For example (the last case in previous chapter):
+
+```
+ 1. U       ->
+ 2.             <-  I           # I after U
+ 3. D*N     ->  <-  M*          # D after I
+ 4.             <-  O           # O after N
+ 5. M*A?    ->  <-  D*(N|A)     # M after U
+```
+
+A new line is started when one side is allowed to send certain messages *after* certain message from the other side arrives.
+
+This *expected* message is a `synchronizer`. In line 1 to 4, `U`, `I`, `N`, `O` are synchronizers.
+
+Line 3 shows concurrency, where both sides send message freely. Fortunately the line has only one synchronizer `N`, so no confusion is raised on when to move to the next line in either side. The initiator moves to the next line after `N` is sent and the responder moves to the next line after `N` is received.
+
+If both sides have synchronizers, there is a confusion. When does one side moves to the next line? The answer maybe:
+
+1. after both ones received AND sent.
+2. after one received.
+3. after one sent.
+4. after either one received OR sent.
+
+Line 5 picks the last logic. Either side moves to the next line, either after it sends a synchrononizer, or after it receives one. (The next line may be a fictional one containing only *inaction*).
+
+This OR logic is also applicable for line 3, if M is not treatd as a synchronizer. It also works in the last line in scenario 3.
+
+Now we have a strict definition of how to move to next line for either side: 
+
+*One side moves to the next line after either it sends its synchronizer, or it receives one from the other side*.
+
+
+
+
+
