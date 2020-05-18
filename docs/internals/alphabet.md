@@ -268,9 +268,10 @@ Q       ->
 Q       -> 
             <- O
 M*A?    ->  <- D*(N|A)    # Strictly, the first M on 
-                          # left side should not be sent 
-                          # before the first D arrives.
-                          # But this is harmless.
+                          # left side should not be 
+                          # sent before the first D 
+                          # arrives. But this is 
+                          # harmless.
 
 3. Streaming Request, Error Response
 
