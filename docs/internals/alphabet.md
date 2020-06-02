@@ -228,6 +228,7 @@ Example:
   }
 }
 ```
+
 > For allowing the request initiator to abort the request, the responder could reply with a stream, even if there is only single object. The responder could do so if preparing response is time consuming, or the operation is buffered in a queue. Responding with a stream gives the request initiator a chance to abort it.
 
 # 3. Alphabet
@@ -276,11 +277,19 @@ M*A?    ->  <- D*(N|A)    # Strictly, the first M on
                           # harmless.
 ```
 ```
-3. Streaming Request, Error Response
+3. Streaming Request, Error Response (3 cases)
+
+U       ->
+            <- E          # before streaming
 
 U       ->
             <- I
-D*(N|A) ->  <- M*E
+D*A?    ->  <- M*E        # during streaming
+
+U       ->
+            <- I
+D*N     ->  <- M*
+            <- E          # after streaming
 ```
 ```
 4. Streaming Request, Non-Streaming Successful Response
