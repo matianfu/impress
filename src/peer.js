@@ -6,7 +6,6 @@ const debug = require('debug')('impress:peer')
 
 const IncomingMessage = require('./incoming-message')
 const ServerResponse = require('./server-response')
-const ClientRequest = require('./client-request')
 
 const Initiator = require('./initiator')
 
